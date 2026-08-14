@@ -88,8 +88,13 @@ Từ Internet     http://149.104.66.174:28417/v1 (HTTP trần, bắt buộc api-
                 https://cliproxy.hangocthanh.io.vn (nginx SNI → caddy-edge → cliproxy)
 Credential      1 × Claude + 1 × Codex (OAuth, nằm ở /opt/deployHeadscale/cliproxy/auths)
 Model đã kiểm chứng  claude-opus-5  (smoke test trong deploy-cliproxy.yml gọi thật, có tiếng Việt)
+Số model          25 (ghi nhận 2026-08-02) — phải đọc lại bằng GET /v1/models lúc deploy
 Secret          CLIPROXY_API_KEY (GitHub secret của repo deployHeadscale)
 ```
+
+Bài học đã trả giá: **`/v1/models` trả 200 kèm 25 model KHÔNG chứng minh gọi được model nào.**
+Bước verify của deploy phải gọi thật một completion — đó mới là phép thử bắt được OOM và lỗi
+mã hoá UTF-8.
 
 **Sự cố phải nhớ (2026-08-02):** bật `logging-to-file: true` khiến **mỗi request của OpenCode**
 sinh một file log 32 MB → cliproxy vượt giới hạn bộ nhớ → kernel OOM-kill giữa chừng → client
