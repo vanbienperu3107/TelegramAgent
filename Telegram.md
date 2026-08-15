@@ -414,6 +414,21 @@ Mức cách ly thật sự đang có, và nó đủ dùng:
 
 **Bắt buộc chạy ngay, không cần cửa sổ bảo trì** (không đụng quyền của dịch vụ nào đang chạy):
 
+**Đo trước khi REVOKE — bắt buộc.** Plan chưa từng đo `datacl` của hai DB kia (§0.2 mới đo
+version/size/role/hba), nên câu "không đụng quyền của dịch vụ nào đang chạy" là **chưa có bằng
+chứng**. Chạy lệnh sau và ghi kết quả vào §0.2 **trước khi** REVOKE:
+
+```sql
+SELECT datname, pg_get_userbyid(datdba) AS owner, datacl FROM pg_database
+WHERE datname IN ('derp','headscale');
+```
+
+Rollback (đã thêm vào bảng §37.5.5): `GRANT TEMP ON DATABASE derp, headscale TO PUBLIC;`
+
+Phạm vi: `REVOKE TEMP` chặn `CREATE TEMP TABLE`, **không** chặn temp *file* do sort/hash sinh ra
+— `temp_file_limit` bên dưới mới chặn cái đó. Cả hai câu đều nằm trong `create-opencode-db.sh`
+(script duy nhất được sudoers cho phép chạm DB), không phải chạy tay rời rạc.
+
 ```sql
 -- CONNECT kéo theo TEMP, và temp_file_limit mặc định là KHÔNG GIỚI HẠN.
 -- Một câu CREATE TEMP TABLE AS SELECT generate_series(1,1e10) đủ làm đầy đĩa vpn6
@@ -423,7 +438,10 @@ REVOKE TEMP ON DATABASE derp, headscale FROM PUBLIC;
 
 -- max_connections dùng chung với headscale: một vòng crash-loop của gateway
 -- (PG_POOL_MAX=4, PG_IDLE_TIMEOUT_S=0) sẽ ăn dần slot của control plane.
-ALTER ROLE opencode CONNECTION LIMIT 6;
+-- 10 chứ không phải 6: phải đếm consumer thật của chính đường deploy — pool của gateway CŨ vẫn
+-- chạy (PG_IDLE_TIMEOUT_S=0 nên không nhả) = 4, pool của gateway MỚI = 4, migrate.js = 1,
+-- psql verify = 1. Đặt 6 là tự bóp cổ deploy bằng "FATAL: too many connections for role".
+ALTER ROLE opencode CONNECTION LIMIT 10;
 
 ALTER ROLE opencode SET temp_file_limit = '64MB';
 ALTER ROLE opencode SET statement_timeout = '8s';
@@ -566,7 +584,7 @@ opencode-telegram-remote/
 │
 ├── scripts/
 │   ├── verify-opencode-config.js    ← bake vào image opencode-server tại /opt/; chạy HAI lần
-│   │                                  (§37.2 bước 4 trước up -d, và bước 5). Kiểm 6 việc (0-5)
+│   │                                  (§37.2 bước 4 trước up -d, và bước 5). Kiểm 7 việc (0-6)
 │   ├── sync-models.js               ← bake vào image GATEWAY tại /app/scripts/ (§36.1, §37.2
 │   │                                  bước 4). HAI đầu vào: opencode.json.template (khuôn) VÀ
 │   │                                  opencode.json hiện có nếu tồn tại — cần cái sau mới biết
@@ -915,6 +933,10 @@ CREATE TABLE tasks (
     -- ngẫu nhiên: Telegram gửi lại update khi offset getUpdates chưa kịp xác nhận (bot bị
     -- OOM/restart giữa chừng). Ngẫu nhiên thì lần gửi lại tạo task thứ hai -> hai agent chạy
     -- song song trên cùng session, đốt đôi quota, đúng thứ §40 sinh ra để cấm.
+    -- Khi telegram_input_message_id NULL (task khởi từ nút [▶ Continue] chứ không từ tin nhắn),
+    -- KHÔNG được dùng UUIDv5 của (user, NULL) — mọi lần bấm sẽ cho cùng một UUID, vi phạm UNIQUE
+    -- ở hàng đợi điều khiển (loại "TUYỆT ĐỐI không bỏ dòng") và tắc vĩnh viễn.
+    -- Trường hợp đó dùng UUIDv4 ngẫu nhiên: không cần idempotency vì không có update để gửi lại.
     client_task_id UUID NOT NULL UNIQUE,
     telegram_user_id BIGINT NOT NULL,
     session_id VARCHAR(255) NOT NULL,
@@ -1071,8 +1093,13 @@ DELETE FROM audit_logs WHERE created_at < now() - interval '90 days';
 DELETE FROM artifacts  WHERE created_at < now() - interval '90 days';
 ```
 
-Không có nó thì hai bảng của dự án này là một đường làm đầy đĩa của control plane — chậm hơn
-`temp_file_limit` ở §4.1 nhưng cùng đích đến.
+**Chạy ở đâu:** KHÔNG phải cron dọn uploads trên vpn4 — DB nằm ở vpn6 và `psql` chỉ có trong image
+`pg-tunnel`. Gọi qua container tunnel từ cron của vpn4:
+`docker exec opencode-pg-tunnel psql "$DATABASE_URL" -c "DELETE …"`. §45.0 có ô checklist riêng.
+Ngưỡng 90 ngày phải chốt trước khi bật: dữ liệu đã xoá không lấy lại được ngoài bản `pg_dump`.
+
+Không có retention thì hai bảng của dự án này là một đường làm đầy đĩa của control plane — chậm
+hơn `temp_file_limit` ở §4.1 nhưng cùng đích đến.
 
 ---
 
@@ -1693,7 +1720,7 @@ nên thêm tay là mất ở lần deploy sau.
 #   6. bảng `bash` chứa ĐÚNG tập mẫu của §27 với ĐÚNG giá trị — không dừng ở bash["*"]=="ask".
 #      Thiếu phép kiểm này thì một regression đánh rơi map deny sẽ qua cả verify lẫn CI, và
 #      `docker compose down derper` tụt từ "deny" xuống chỉ còn một nút bấm lúc 2 giờ sáng
-# Tổng: SÁU phép kiểm, đánh số 0-5. Script chạy HAI lần: bước 4 (trước up -d) và bước 5.
+# Tổng: BẢY phép kiểm, đánh số 0-6. Script chạy HAI lần: bước 4 (trước up -d) và bước 5.
 # LỆNH CỤ THỂ chỉ nằm ở §37.2 — hai lần chạy dùng hai dạng khác nhau (bước 4 là
 # `docker run --rm` vì container chưa tồn tại; bước 5 là `docker exec`). Chép lệnh vào
 # đây là tạo bản thứ hai, và bản thứ hai chắc chắn lệch ở lần sửa sau.
@@ -2825,9 +2852,23 @@ fetch`, tải dependency, đọc tài liệu. Các lớp bù đang có:
 4. Không nằm trong `db_net` (§37) — không thấy cổng tới Postgres của headscale.
 5. Audit log mọi lệnh được duyệt (§32).
 
-Phương án siết chặt hơn cho Phase 2 (cần đo trước): `opencode_net: internal: true` và chỉ để
-`edge` làm đường ra — với điều kiện kiểm chứng `edge` có ra Internet hay không, vì `cliproxy`
-nằm trên đó và **nó cần** gọi upstream Claude/OpenAI.
+**Đường ra không chỉ là Internet — nó là cả tailnet và mạng Bitel.** Đây là chỗ mục này từng nói
+thiếu: `opencode-server` nằm trên bridge thường, gateway mặc định là **host vpn4**, mà host đó có
+`ts-vpn4 = 100.64.0.4` và `ts-vpngw = 100.64.0.9` với `TS_USERSPACE=false` (tun thật trên host,
+§0.1) cùng route `10.121.124.155/32`. Một lệnh `curl http://100.64.0.7:…` hay
+`curl http://10.121.124.155:…` từ trong container đi thẳng qua host vào **tailnet của cả fleet và
+mạng nội bộ Bitel**. Không lớp bù nào ở trên chặn đường này — `bash: ask` không chặn `webfetch`,
+và `webfetch: ask` không chặn được một lệnh `curl` đã được người dùng bấm Approve.
+
+Hai phương án siết, phải chọn một ở Milestone 0 (đo trước, đừng đoán):
+
+```text
+(a) iptables trên vpn4: chặn 100.64.0.0/10 và 10.121.0.0/16 từ subnet của opencode_net
+    trong chain DOCKER-USER. Rẻ, hiệu lực ngay, nhưng rule không nằm trong repo -> phải
+    ghi vào runbook (đúng bài học của cliproxy §6 README).
+(b) opencode_net: internal: true, chỉ để `edge` làm đường ra — cần kiểm chứng `edge` có ra
+    Internet không, vì `cliproxy` nằm trên đó và NÓ CẦN gọi upstream Claude/OpenAI.
+```
 
 ---
 
@@ -3063,8 +3104,12 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     environment:
-      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?bat buoc}
-      CLIPROXY_API_KEY: ${CLIPROXY_API_KEY:?bat buoc}
+    # KHÔNG dùng `environment:` với `${VAR:?}` cho hai biến này — dùng `env_file` như gateway.
+    # Lý do là ràng buộc thật: `environment:` đi qua ENGINE NỘI SUY của compose, còn `env_file:`
+    # thì KHÔNG. Hai bộ luật khác nhau trên cùng một file: giá trị `abc$def` thành `abc` ở đường
+    # nội suy nhưng giữ nguyên ở đường env_file. Dùng env_file cho CẢ HAI service thì `.env` chỉ
+    # còn MỘT cách đọc (dotenv), và `gen-env.py` KHÔNG cần escape `$` — chỉ `"` và `\`.
+    env_file: .env
     volumes:
       - ./opencode.json:/home/node/.config/opencode/opencode.json:ro
       - ./workspace:/workspace                # CHỈ thư mục này (§33.1), chown 1000 (§33.2)
@@ -3183,7 +3228,8 @@ vpn4 chỉ có **1968 MB** RAM. Đây là ràng buộc cứng nhất của cả 
 | `opencode-server` (giới hạn) | 512 MB |
 | `telegram-gateway` (giới hạn) | 256 MB |
 | `pg-tunnel` (giới hạn) | 64 MB |
-| **Tổng sau khi thêm stack này** | **~1524 MB / 1968 MB** |
+| **Tổng theo mức ĐANG DÙNG** | ~1524 MB / 1968 MB |
+| **Tổng theo TRẦN của cliproxy** (kịch bản xấu ở blockquote trên) | **~2100 MB / 1968 MB → swap** |
 | Còn lại cho đỉnh tải + page cache | ~444 MB |
 
 **Tiến trình healthcheck cũng nằm trong cgroup của service** — khoản này dễ bị bỏ quên và đã suýt
@@ -3382,7 +3428,11 @@ whitelist (§6.3):
              vào cửa sổ ~20 phút giữa bước 3 và 5b sẽ làm `diff` khác rỗng và AC-21 báo "đã đụng
              hạ tầng" trong khi stack này không làm gì — phản xạ đầu tiên khi thấy dòng đó là
              nghi mình vừa phá headscale)
-            pg_database_size của derp và headscale; số connection theo role (§4.1)
+  KHÔNG chụp — biến thiên liên tục, chụp vào là `diff` LUÔN khác rỗng:
+            `pg_database_size`, số connection theo role. DB `derp` nhận telemetry của cả fleet
+            mỗi 3 giây, `headscale` nhận heartbeat node liên tục; hai lần chụp cách nhau 15–20
+            phút thì hai trường này chắc chắn đổi → bước 5b đỏ → `if: failure()` gỡ luôn stack
+            vừa dựng xong. Muốn theo dõi chúng thì ghi ra **artifact tham khảo**, đừng đưa vào `diff`
             count(*) pg_tables schemaname='public' của DB derp và DB headscale
             danh sách database (lọc BỎ opencode_remote) và role (lọc BỎ opencode)
   KHÔNG chụp: nội dung authorized_keys, dòng permitopen, dung lượng DB
@@ -3429,15 +3479,17 @@ stdout bắt được tự nhiên, không phụ thuộc tính năng của action
   env:
     SSH_KEY_VPN6_B64:  ${{ secrets.SSH_KEY_VPN6_B64 }}
     VPN6_HOST_KEY_B64: ${{ secrets.VPN6_HOST_KEY_B64 }}
-    SSH_USER_VPN6:     ${{ secrets.SSH_USER_VPN6 }}
-    SSH_HOST_VPN6:     ${{ secrets.SSH_HOST_VPN6 }}
+    SSH_USER_VPN6:        ${{ secrets.SSH_USER_VPN6 }}
+    SSH_HOST_VPN6:        ${{ secrets.SSH_HOST_VPN6 }}
+    OPENCODE_PG_PASSWORD: ${{ secrets.OPENCODE_PG_PASSWORD }}
   run: |
+    [ -n "$OPENCODE_PG_PASSWORD" ] || exit 1
     install -m 600 /dev/null key && echo "$SSH_KEY_VPN6_B64" | base64 -d > key
     install -m 644 /dev/null known_hosts && echo "$VPN6_HOST_KEY_B64" | base64 -d > known_hosts
     ssh-keygen -y -f key > /dev/null
     SSHV6="ssh -i key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=known_hosts $SSH_USER_VPN6@$SSH_HOST_VPN6"
     $SSHV6 "sudo /usr/local/bin/snapshot-vpn6.sh > /tmp/vpn6-before.txt"
-    $SSHV6 sudo /usr/local/bin/create-opencode-db.sh
+    printf '%s' "$OPENCODE_PG_PASSWORD" | $SSHV6 "sudo /usr/local/bin/create-opencode-db.sh"
     $SSHV6 sudo /usr/local/bin/update-permitopen.sh > permitopen.out
     grep -oE '^PG_REMOTE_HOST=([0-9]{1,3}\.){3}[0-9]{1,3}$' permitopen.out >> "$GITHUB_OUTPUT"
 ```
@@ -3574,6 +3626,7 @@ set -x
 [ -d workspace/opencode-sandbox ] || git clone https://github.com/vanbienperu3107/opencode-sandbox.git workspace/opencode-sandbox
 chown -R 1000:1000 /opt/opencode/workspace
 cp -f opencode.json opencode.json.bak 2>/dev/null || true
+[ -f opencode.json ] || install -m 644 /dev/null opencode.json
 docker compose pull
 docker run --rm --user 0:0 --network edge -v /opt/opencode/opencode.json.template:/work/opencode.json.template:ro -v /opt/opencode/opencode.json:/work/opencode.json -v /opt/opencode/docs:/work/docs -w /work -e CLIPROXY_API_KEY -e CLIPROXY_BASE_URL ghcr.io/vanbienperu3107/opencode-telegram-gateway:${GATEWAY_TAG} node /app/scripts/sync-models.js
 chmod 644 opencode.json
@@ -3683,7 +3736,8 @@ test "$(free -m | awk '/^Mem:/{print $7}')" -gt 300
 # lỗi "key bị cụt vì nội suy $" (deploy xanh, bot 401) lẫn lớp lỗi OOM/mojibake. Mượn đúng
 # khuôn smoke test của deploy-cliproxy.yml, vốn sinh ra sau sự cố 2026-08-02.
 test "$(docker exec opencode-server opencode models | grep -c cliproxy)" -ge 1
-docker exec opencode-server opencode run --model cliproxy/claude-opus-5 "Tra loi dung mot tu: ok" | grep -qi ok
+docker run --rm --network edge -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro -e CLIPROXY_API_KEY ghcr.io/vanbienperu3107/opencode-server:${OPENCODE_TAG} opencode run --model cliproxy/claude-opus-5 "Tra loi dung mot tu tieng Viet co dau: mau cua tuyet la gi" > /tmp/smoke.txt
+grep -qi "trắng" /tmp/smoke.txt
 docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/baseline-after.txt
 diff /tmp/baseline-before.txt /tmp/baseline-after.txt
 ```
@@ -3711,8 +3765,8 @@ Ghi chú:
   in nguyên mật khẩu vào log của một repo **công khai**. Bọc `set +x` quanh đúng dòng đó.
 - **`pg_isready` không chứng minh đăng nhập được** — nó chỉ nói "có ai trả lời giao thức". Thiếu
   dòng `psql` thì đổi mật khẩu mà quên `ALTER ROLE` sẽ cho deploy xanh toàn tập.
-- **`verify-opencode-config.js`** được `COPY` vào image tại `/opt/` (§36.2). Nó kiểm **6 việc**
-  (đánh số 0-5), bắt đầu bằng việc 0 — đọc đúng đường dẫn tuyệt đối:
+- **`verify-opencode-config.js`** được `COPY` vào image tại `/opt/` (§36.2). Nó kiểm **7 việc**
+  (đánh số 0-6), gồm cả việc 6 — bảng `bash` khớp chính xác tập mẫu deny của §27:
   file parse được · mọi khoá `permission` thuộc danh sách hợp lệ · `bash["*"]`, `webfetch`,
   `websearch`, `external_directory` đều là `ask` · `lsp` là `deny` · **đủ 13 khoá**.
 - **Cổng RAM `-gt 300` là số đo LÚC RỖI**, không phải bằng chứng về đỉnh tải. Cột 7 của dòng
@@ -3833,15 +3887,25 @@ thái mà tiêu chí huỷ vừa gọi là nguy hiểm:
 
 ```yaml
 - name: Huy deploy va go stack
-  if: failure()
+  # KHÔNG dùng `if: failure()` trần. Bước 5 đỏ ở mức RAM 250 MB — hoặc bước 5d hỏng vì lý do
+  # vặt như `scp` — cũng sẽ gỡ nguyên một stack đang chạy tốt, tức xoá mất chính vùng đệm
+  # 200–300 MB mà tiêu chí này vừa định nghĩa. Điều kiện phải là ĐÚNG hai tình huống nguy hiểm,
+  # do một step riêng đặt output `danger=true` khi RestartCount tăng hoặc RAM < 200 MB.
+  if: failure() && steps.danger.outputs.danger == 'true'
   uses: appleboy/ssh-action@v1.2.0
   with:
-    # host/username/key/port như bước 4
+    host: ${{ secrets.SSH_HOST_VPN4 }}
+    username: ${{ secrets.SSH_USER }}
+    key: ${{ secrets.SSH_KEY }}
+    port: ${{ secrets.SSH_PORT || '22' }}
+    script_stop: true
     script: |
+      exec 9>/var/lock/vpn4-deploy
+      flock -w 600 9 || exit 1
       cd /opt/opencode
       docker compose down
-      docker inspect -f '{{.Name}} {{.RestartCount}}' derper cliproxy
-      free -m
+      docker inspect -f '{{.Name}} {{.RestartCount}}' derper cliproxy > /tmp/after-abort.txt
+      diff /tmp/baseline-before.txt /tmp/after-abort.txt || true
 ```
 
 Và thêm phép so ngưỡng **200 MB** ngay trong bước 5 (hiện chỉ có ngưỡng 300 MB) để tiêu chí huỷ
@@ -4023,6 +4087,8 @@ mạng `edge` chứ không sở hữu. Sau khi `down`, kiểm `docker network in
 | Cron dọn uploads trên vpn4 | `crontab -r -u <user>` hoặc xoá dòng | `crontab -l` sạch |
 | Thêm dòng vào `pg_hba.conf` (§7.11.2) | Xoá dòng vừa thêm + `SELECT pg_reload_conf()` | `RestartCount` của `derp-postgres` không đổi; headscale vẫn chạy |
 | Sinh `.env` hỏng | `cp .env.bak .env` + `docker compose up -d` | `/healthz` có `"db":"up"` |
+| **Xoay `OPENCODE_PG_PASSWORD`** | Đổi secret → chạy lại `deploy.yml`; `create-opencode-db.sh` **luôn** `ALTER ROLE … PASSWORD` nên role nhận giá trị mới ngay | `psql` ở bước 5 xanh **và** `/healthz` có `"db":"up"` |
+| Thêm `REVOKE TEMP` trên vpn6 | `GRANT TEMP ON DATABASE derp, headscale TO PUBLIC;` | `headscale nodes list` chạy được; dashboard trả 200 |
 | Deploy chết giữa bước 4 | Chạy §37.5.4 (gỡ stack) rồi §37.5.1 nếu đã kịp đụng vpn6; `.env` và `opencode.json` khôi phục từ `.bak` | `derper` RestartCount không đổi; `snapshot-vpn6.sh` diff rỗng |
 | Cả stack gây sự cố | `docker compose down` | `derper` `RestartCount` không đổi, `free -m` hồi lại |
 
@@ -4264,6 +4330,12 @@ SHOULD:
 - [ ] Ba secret dạng base64: `SSH_KEY_VPN6_B64`, `VPN6_HOST_KEY_B64`, `PG_TUNNEL_KEY_B64`
       (sinh bằng `base64 -w0 < file`) — giá trị nhiều dòng qua `envs:` sẽ bị cắt
 - [ ] Script whitelist trên vpn6: `update-permitopen.sh`, `create-opencode-db.sh`, `snapshot-vpn6.sh`
+- [ ] **Chống drift ba script đó**: bước 3 của deploy so `sha256sum` bản trên vpn6 với bản trong
+      repo, khác thì fail. Thiếu phép so này thì sửa script trong repo (ví dụ thêm `REVOKE TEMP`
+      theo §4.1) mà vpn6 vẫn chạy bản cũ — deploy xanh, hardening không bao giờ được áp
+- [ ] Cron retention `audit_logs`/`artifacts` gọi qua `docker exec opencode-pg-tunnel psql` (§7.9)
+- [ ] Đo log rotation của `derp-postgres` (`docker inspect … .HostConfig.LogConfig`) — tunnel thêm
+      1440 kết nối/ngày và mỗi vòng reconnect sinh log; vpn6 từng có container phình 2.5 GB log
       (đều không nhận tham số hoặc validate tham số bằng regex) + sudoers tương ứng (§6.3)
 - [ ] Cron trên vpn4 dọn `.opencode-telegram/uploads` (`find -mtime +7 -delete`, §33)
 - [ ] Milestone 0 trả lời: `permission.lsp = deny` có thật sự ngăn spawn language server không (§27)
@@ -4640,7 +4712,8 @@ diff /tmp/baseline-before.txt /tmp/baseline-after.txt   # phải rỗng
 - `derper`, `edge-nginx`, `caddy-edge`, `cliproxy`, `vpn-gw`, `ts-vpngw`, `ping-reporter-vpn4`,
   `ts-vpn4` trên vpn4 — đúng 8 container mà lệnh `docker inspect` ở §37.2 đo: `RestartCount` và
   `StartedAt` **không đổi**
-- `headscale`, `derp-postgres`, `derp-backend` trên vpn6: **không restart lần nào** — bảo đảm
+- `headscale`, `derp-postgres` trên vpn6: **không restart lần nào**. (`derp-backend` cố ý KHÔNG
+  nằm trong phép kiểm: `dashboard-watchtower` tự cập nhật nó — §37.2 bước 3) — bảo đảm
   bằng thiết kế, vì phương án đã chọn không sửa compose vpn6 (§7.11.1)
 - DB `derp` và `headscale` không có bảng nào mới — **bảo đảm bằng thiết kế VÀ được xác nhận bằng máy**: từ PostgreSQL 15 trở đi, `PUBLIC` không còn quyền `CREATE` trên schema `public`, nên
   role `opencode` kết nối vào được nhưng **không tạo được bảng** (PG ở đây là 18.4 — §0.2). Vế này **đã kiểm bằng máy**:
@@ -4756,6 +4829,8 @@ symlink       (chỉ nhánh B) artifact là symlink trỏ ra ngoài WORKSPACE_RO
 kích thước    tệp đúng MAX_INPUT_ATTACHMENT_MB → qua; +1 byte → lỗi đúng thông điệp §41
 cảnh báo RAM  RAM khả dụng < 300 MB → admin nhận đúng một tin (§37.1 quy tắc 3)
 hoà giải      task "running" cũ khi khởi động → chuyển sang trạng thái xác định (AC-17)
+compose       oom_score_adj có mặt ở CẢ BA service — §37.1 gọi nó là bắt buộc nhưng chưa phép
+              kiểm nào bắt; thiếu là quy tắc "hy sinh OpenCode trước" mất hiệu lực im lặng
 compose       phân tích docker-compose.yml: không "ports:" ở opencode-server; opencode-server
               KHÔNG ở db_net; đủ mem_limit + pids_limit + logging; không mount cấm; không tag
               trôi (AC-19, AC-21, §37.3)
@@ -4814,7 +4889,7 @@ API surface: bảng §17.2 điền đủ 8 dòng từ GET /doc, ghi ngày kiểm
              §33.3 ghi rõ chọn NHÁNH A / A+ / B (quyết định này đổi cả compose)
 SSE mẫu:     docs/opencode-events-sample.jsonl chụp từ một prompt CÓ sửa file và CÓ xin quyền;
              đã ánh xạ các type quan sát được sang §18/§19/§26
-permission:  khối permission dùng đúng tên khoá; bash["*"], webfetch, websearch,
+permission:  7 phép kiểm (0-6) của verify-opencode-config.js đều xanh; bash["*"], webfetch, websearch,
              external_directory đều là "ask", lsp là "deny" (kiểm bằng node — vpn4 không có jq)
 workspace:   touch/rm trong /workspace thành công (uid 1000)
 telegram:    getMe → {"ok":true} từ chính vpn4
