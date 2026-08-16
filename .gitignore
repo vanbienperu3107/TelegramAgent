@@ -43,3 +43,19 @@ Thumbs.db
 .claude/v650-state*.json
 .claude/v650-handoff.json
 .claude/settings.local.json
+
+# File env that (sinh tren vpn4, khong bao gio commit)
+.env
+.env.opencode
+!.env.example
+!.env.opencode.example
+
+# Khoa SSH cua tunnel + known_hosts (sinh tu secret luc deploy)
+keys/
+
+# Workspace cua agent tren vpn4 (repo khac, clone luc deploy)
+workspace/
+
+# Cau hinh sinh luc deploy tu template + /v1/models cua cliproxy
+opencode.json
+opencode.json.bak

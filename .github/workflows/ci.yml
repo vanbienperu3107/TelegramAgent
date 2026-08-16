@@ -1,0 +1,89 @@
+name: CI
+
+# Trigger khai TUONG MINH. Repo nay PUBLIC va giu SSH_KEY = root tren may chay
+# DERP relay cua ca fleet, nen:
+#   - KHONG dung pull_request_target (chay workflow cua nhanh dich VOI SECRET
+#     day du tren ma cua PR den tu fork — mot PR "them test" lot review la du);
+#   - job nay KHONG dung secret nao, nen `pull_request` la an toan.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  invariants:
+    name: Bat bien compose + hop dong env
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cai phu thuoc test
+        run: pip install pytest pyyaml
+
+      - name: Chay test
+        run: pytest tests/ -v
+
+      - name: Compose phai parse duoc voi bien that
+        env:
+          GATEWAY_TAG: sha-gia-lap
+          OPENCODE_TAG: v0.0.0-gia-lap
+          TUNNEL_TAG: v0.0.0-gia-lap
+          PG_REMOTE_HOST: 172.21.0.2
+          HEALTH_PORT: "8790"
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Compose phai DUNG khi thieu bien bat buoc
+        run: |
+          if docker compose -f docker-compose.yml config --quiet 2>/dev/null; then
+            echo "::error::compose parse duoc du thieu bien bat buoc — mat fail-fast"
+            exit 1
+          fi
+          echo "OK: thieu bien thi compose dung, dung nhu thiet ke"
+
+  secrets-scan:
+    name: Quet bi mat
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Khong duoc co bi mat trong repo PUBLIC
+        run: |
+          PAT='sk-cliproxy-[a-z0-9]{10,}|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}|ghp_[A-Za-z0-9]{20,}|BEGIN [A-Z ]*PRIVATE KEY'
+          if grep -rInE "$PAT" --exclude-dir=.git .; then
+            echo "::error::tim thay bi mat trong repo"
+            exit 1
+          fi
+          echo "OK: khong tim thay bi mat"
+
+      - name: File env that khong duoc commit
+        run: |
+          if git ls-files --error-unmatch .env .env.opencode 2>/dev/null; then
+            echo "::error::.env hoac .env.opencode bi commit"
+            exit 1
+          fi
+          echo "OK: chi co file .example"
+
+  workflow-policy:
+    name: Luat trigger workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cam pull_request_target tuyet doi
+        run: |
+          if grep -rn "pull_request_target" .github/workflows/; then
+            echo "::error::pull_request_target chay voi secret day du tren ma cua fork"
+            exit 1
+          fi
+          echo "OK: khong co pull_request_target"
+
+      - name: Workflow co trigger pull_request khong duoc dung secret
+        run: python3 scripts/check-workflow-policy.py
