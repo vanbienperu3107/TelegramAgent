@@ -18,8 +18,24 @@ Script nay lam o tang KY TU: decode utf-8 strict, roi khang dinh tren codepoint.
 import sys
 import unicodedata
 
-# Dau hieu mojibake: byte UTF-8 bi doc nham thanh Latin-1 roi ma hoa lai.
-MOJIBAKE = ("Ã", "â", "Â")
+
+def la_mojibake(text):
+    """Phep thu VONG TRON, khong phai danh sach dau hieu.
+
+    Mojibake = byte UTF-8 bi doc nham thanh Latin-1 roi ma hoa lai. Vay neu ma
+    hoa nguoc chuoi ve Latin-1 roi giai ma bang UTF-8 MA THANH CONG, thi chuoi
+    dang xet von la UTF-8 bi hong.
+
+    Truoc day cho nay dung mot danh sach dau hieu co dinh, va CI bat duoc ngay
+    lan chay dau tien: chuoi "Troi dep" (co dau) khi hong khong sinh ra ky tu
+    nao trong danh sach do nen mojibake lot qua. Danh sach dau hieu luon thieu
+    mot truong hop nao do; phep thu vong tron thi khong.
+    """
+    try:
+        khoi_phuc = text.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return False
+    return khoi_phuc != text
 
 
 def check(path):
@@ -34,7 +50,7 @@ def check(path):
     except UnicodeDecodeError as exc:
         return "khong phai UTF-8 hop le: %s" % exc
 
-    if any(marker in text for marker in MOJIBAKE):
+    if la_mojibake(text):
         return "co dau hieu mojibake (UTF-8 bi decode nham Latin-1 roi ma hoa lai)"
 
     # Chu Viet co dau: ky tu ngoai ASCII thuoc bang chu cai Latin.

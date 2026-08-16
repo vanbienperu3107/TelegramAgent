@@ -77,13 +77,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cam pull_request_target tuyet doi
-        run: |
-          if grep -rn "pull_request_target" .github/workflows/; then
-            echo "::error::pull_request_target chay voi secret day du tren ma cua fork"
-            exit 1
-          fi
-          echo "OK: khong co pull_request_target"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Workflow co trigger pull_request khong duoc dung secret
+      - run: pip install pyyaml
+
+      # Kiem bang cach PHAN TICH khoi `on:` cua tung workflow, khong dung grep.
+      # Ban dau cho nay la mot lenh grep va CI do ngay lan chay dau: chinh dong
+      # comment giai thich luat cung chua chuoi "pull_request_target", nen no tu
+      # to cao minh. grep khong phan biet duoc cau hinh voi van ban noi ve cau hinh.
+      - name: Luat trigger (cam pull_request_target, cam secret voi pull_request)
         run: python3 scripts/check-workflow-policy.py
