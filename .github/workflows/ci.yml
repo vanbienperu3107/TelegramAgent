@@ -31,6 +31,20 @@ jobs:
       - name: Chay test
         run: pytest tests/ -v
 
+      # Sinh env bang chinh gen-env.py cua deploy. Buoc nay dong thoi chung minh
+      # duong sinh file chay duoc that: `docker compose config` KIEM SU TON TAI
+      # cua moi env_file, nen mot file duoc khai ma khong ai sinh se lam CI do
+      # ngay — dung lop loi ma bon vong review doi khang moi bat duoc.
+      - name: Sinh file env gia lap
+        env:
+          TELEGRAM_BOT_TOKEN: gia-lap
+          TELEGRAM_ALLOWED_USER_IDS: "1"
+          TELEGRAM_ADMIN_USER_IDS: "1"
+          OPENCODE_PG_PASSWORD: gia-lap
+          OPENCODE_SERVER_PASSWORD: gia-lap
+          CLIPROXY_API_KEY: gia-lap
+        run: python3 scripts/gen-env.py
+
       - name: Compose phai parse duoc voi bien that
         env:
           GATEWAY_TAG: sha-gia-lap
