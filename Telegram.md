@@ -449,7 +449,13 @@ ALTER ROLE opencode SET idle_in_transaction_session_timeout = '30s';
 -- idle_in_transaction KHONG reap session roi NGOAI transaction. Tunnel dut -> 4 ket noi
 -- half-open ben vpn6; PG_IDLE_TIMEOUT_S=0 khong nha, TCP keepalive mac dinh cua PostgreSQL
 -- la 2 gio -> autossh dung lai sau 45s thanh 8 ket noi. Deploy trong cua so do la vuot tran.
-ALTER ROLE opencode SET idle_session_timeout = '10min';
+-- CHON 30min chu khong phai 10min, va Gateway phai ping giu ket noi 5 phut/lan.
+-- Ly do: PG_IDLE_TIMEOUT_S=0 (§6) co y giu ket noi am de tranh tra gia bat tay
+-- 307 ms. Dat timeout ngan hon nhip dung that cua mot bot ca nhan (roi phan lon
+-- thoi gian) thi PostgreSQL giet sach pool, va truy van ke tiep ton TCP + SCRAM
+-- + bundle ~1228 ms -> VUOT ngan sach 1000 ms cua AC-18. §49 phai co test
+-- "truy van dau tien sau khi pool roi lau van trong ngan sach AC-18".
+ALTER ROLE opencode SET idle_session_timeout = '30min';
 ```
 
 `snapshot-vpn6.sh` **KHÔNG** chụp `pg_database_size` hay số connection — hai trường đó biến thiên
@@ -600,8 +606,16 @@ opencode-telegram-remote/
 │   │                                  Sinh khối `models`; KHÔNG sinh `agent` (tĩnh trong
 │   │                                  template); tự `mkdir -p docs`; LUÔN ghi
 │   │                                  docs/models-unverified.md kể cả khi rỗng
-│   ├── gen-env.py                   ← chạy trên host vpn4 bằng python3, sinh .env (§37.2 bước 4)
-│   ├── readenv.py                   ← đọc MỘT biến từ .env theo đúng luật dotenv của compose;
+│   ├── gen-env.py                   ← chạy trên host vpn4 bằng python3, sinh HAI file (§37.2 b4):
+│   │                                  .env (đầy đủ, cho gateway) VÀ .env.opencode (ĐÚNG 2 biến —
+│   │                                  CLIPROXY_API_KEY + OPENCODE_SERVER_PASSWORD — cho
+│   │                                  opencode-server). Cả hai chmod 600
+│   ├── .env.opencode.example        ← khuôn của file thứ hai, đúng 2 dòng
+│   ├── check-utf8.py                ← decode utf-8 strict, khẳng định có ký tự Việt ngoài ASCII
+│   │                                  và không có mojibake; bước 5 dùng nó thay cho `grep`,
+│   │                                  vì `grep` ở locale C so theo byte nên không phân biệt được
+│   ├── readenv.py                   ← đọc MỘT biến; tham số 1 = tên file (.env hoặc
+│   │                                  .env.opencode), tham số 2 = tên biến; luật dotenv;
 │   │                                  thay cho `source .env` để chỉ còn một cách hiểu file
 │   └── vpn6/                        ← cài THỦ CÔNG lên vpn6 một lần (§45.0), không deploy tự động
 │       ├── update-permitopen.sh     ← nhận IP, validate bằng regex
@@ -755,9 +769,15 @@ TUNNEL_TAG=<vars.TUNNEL_TAG>             # repo variable đã ghim — ảnh pg-
                                          # không build lại theo mỗi commit (§36)
 ```
 
-## 6.2 Bảy biến compose khai `${VAR:?}` — thiếu một là `docker compose up` dừng ngay
+## 6.2 Năm biến compose khai `${VAR:?}` — thiếu một là `docker compose up` dừng ngay
 
-Đây là danh sách đóng, phải khớp **chính xác** với §37. Bước sinh `.env` trong deploy ghi đủ cả bảy:
+Đây là danh sách đóng, phải khớp **chính xác** với §37.
+
+**Chú ý: chỉ còn NĂM.** `OPENCODE_SERVER_PASSWORD` và `CLIPROXY_API_KEY` đã chuyển sang
+`.env.opencode` (§37) nên **không còn `${VAR:?}` bảo vệ** — mất fail-fast của compose. Chốt chặn
+thay thế là hai dòng `[ -s .env.opencode ] || exit 1` ở bước 4, cộng phép kiểm §49
+"`.env.opencode` có đúng 2 biến, cả hai khác rỗng". Thiếu chúng thì file rỗng vẫn cho
+`docker compose up` xanh, agent gọi cliproxy nhận 401, người dùng chỉ thấy "Thinking" treo.
 
 Cột nguồn ghi **biểu thức nguyên văn** dùng trong `deploy.yml` — phép kiểm ở §37.3 so khớp tĩnh
 với chính cột này, nên viết bằng văn xuôi là làm phép kiểm không thực thi được:
@@ -767,16 +787,18 @@ với chính cột này, nên viết bằng văn xuôi là làm phép kiểm kh�
 2. OPENCODE_TAG             ${{ vars.OPENCODE_TAG }}    ← khớp tag build-opencode-server.yml đẩy
 3. TUNNEL_TAG               ${{ vars.TUNNEL_TAG }}      ← khớp tag build-pg-tunnel.yml đẩy
 4. PG_REMOTE_HOST           ${{ steps.vpn6.outputs.PG_REMOTE_HOST }}
-5. OPENCODE_SERVER_PASSWORD ${{ secrets.OPENCODE_SERVER_PASSWORD }}
-6. CLIPROXY_API_KEY         ${{ secrets.CLIPROXY_API_KEY }}
-7. HEALTH_PORT              (hằng số trong .env.example — KHÔNG xuất hiện trong deploy.yml)
+5. HEALTH_PORT              (hằng số trong .env.example — KHÔNG xuất hiện trong deploy.yml)
+
+Hai biến ĐÃ RỜI khỏi danh sách này, nay ở .env.opencode và KHÔNG còn ${VAR:?} bảo vệ:
+   OPENCODE_SERVER_PASSWORD ${{ secrets.OPENCODE_SERVER_PASSWORD }}
+   CLIPROXY_API_KEY         ${{ secrets.CLIPROXY_API_KEY }}
 ```
 
-Dòng 7 là **dạng thứ năm, có chủ đích**: `HEALTH_PORT` đi vào `.env` qua `.env.example` →
+Dòng 5 là **dạng thứ năm, có chủ đích**: `HEALTH_PORT` đi vào `.env` qua `.env.example` →
 `gen-env.py`, không qua `env:`/`envs:` của workflow. Phép kiểm §37.3 phải chấp nhận dạng này,
 nếu không nó đỏ giả mỗi lần chạy.
 
-Ngoài bảy biến trên, `.env` còn có các biến **không** ở dạng `${VAR:?}` nhưng **bước verify của
+Ngoài năm biến trên, `.env` còn có các biến **không** ở dạng `${VAR:?}` nhưng **bước verify của
 deploy vẫn dùng tới**, nên chúng cũng bắt buộc phải có mặt:
 
 ```text
@@ -2479,10 +2501,11 @@ Ba nhánh thật, theo thứ tự ưu tiên — Milestone 0 phải chốt một:
 (2) Không ngăn được, nhưng OpenCode có KHỐI CẤU HÌNH `lsp` riêng để tắt server
     (khác permission.lsp — cái sau là quyền của tool) -> tắt ở đó, giữ 512m.
     verify-opencode-config.js thêm phép kiểm cho khối này.
-(3) Không có cả hai -> chấp nhận LSP chạy: opencode-server 768m + gateway 192m
-    = 692+768+192+64 = 1716/1968, còn 252 MB. DƯỚI ngưỡng cảnh báo 300 MB
-    nhưng TRÊN ngưỡng huỷ 200 MB -> phải hạ mem_limit cliproxy trong một cửa sổ
-    bảo trì riêng (§37.1) TRƯỚC khi bật nhánh này, không phải trong lúc deploy.
+(3) Không có cả hai -> KHÔNG nâng mem_limit cua opencode-server: 768+192+64
+    = 1024 MB VUOT tran 900 MB ma §0.6 rang buoc 1 dat ra. Nhanh dung la tach
+    LSP thanh container rieng co mem_limit cua no, hoac chap nhan V1 chay khong
+    LSP va ghi ro phep do nao khong thuc hien duoc. Muon di duong nang RAM thi
+    phai SUA §0.6 rang buoc 1 truoc, kem lap luan so — khong duoc lang le vuot.
 ```
 
 Sandbox giữ nguyên `.ts` ở cả ba nhánh.
@@ -3127,8 +3150,8 @@ services:
     pids_limit: 512           # agent chạy bash; chặn fork bomb do lệnh hỏng
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
-    environment:
-    # HAI FILE ENV RIÊNG, không dùng chung `.env`, và không dùng `environment:` với ${VAR:?}.
+    # HAI FILE ENV RIÊNG, không dùng chung `.env`, và KHÔNG có khoá `environment:` nào ở đây —
+    # để khoá đó trống là `environment: null` trong YAML, một hình dạng chưa ai đo hành vi.
     # Ba lý do cùng lúc, mỗi lý do từng là một lỗi thật:
     #  1. `environment:` đi qua ENGINE NỘI SUY của compose còn `env_file:` thì KHÔNG — cùng một
     #     file mà hai cách hiểu, giá trị `abc$def` thành `abc` ở đường nội suy. Bỏ nội suy thì
@@ -3347,6 +3370,17 @@ L3  MỌI LỆNH PHẢI CÓ BẰNG CHỨNG TỒN TẠI đúng nơi nó chạy �
     hoặc runner GitHub. "Có ở đâu đó" không đủ: phải có ở ĐÚNG shell / ĐÚNG image /
     ĐÚNG đường dẫn / ĐÚNG máy.
 
+L5  KHI THÊM MỘT TẠO TÁC MỚI (file, step, biến, script), phải liệt kê ĐỦ mọi mục:
+      SINH ra nó · ĐỌC nó · KIỂM nó · QUAY LUI nó.
+    Tối thiểu tám mục: §5 (cây thư mục) · §35.2 (vị trí trên đĩa) · §6.2 (nguồn biến) ·
+      §37.2 (bước sinh) · §37.2.3 (bảng lệnh) · §37.3 (phép kiểm CI) · §37.5.5 (rollback) ·
+      §45.0 (checklist) — và §49 nếu nó kiểm được bằng test.
+    Luật này ra đời sau khi ba vòng liên tiếp, mỗi sửa đổi lớn lại đẻ ra một lỗi CÙNG HẠNG
+    với lỗi nó vá: `.env.opencode` được compose tham chiếu mà không mục nào sinh; step
+    `danger` chụp 2 trường trong khi baseline chụp 3; smoke test đổi sang khẳng định tính
+    chất nhưng dùng sai ngữ nghĩa `grep -v`. Cả ba đều là "sửa ở một mục, quên các mục
+    tiêu thụ nó".
+
 L4  KHI MỘT BƯỚC ĐỔI MÁY THỰC THI, phải rà lại đủ BỐN thứ:
       (a) file được GHI ở máy nào     (b) file được ĐỌC ở máy nào
       (c) nguồn của mọi $VAR ở máy đó (d) dòng bằng chứng lệnh trong bảng L3 cho máy đó
@@ -3424,13 +3458,19 @@ thêm vào đó thì đây mới là "giảm xác suất", chưa phải "loại 
 `vars.TUNNEL_TAG`** — chúng không nằm trong bảng secret nhưng compose khai `${…:?}`, thiếu là
 `docker compose pull` dừng giữa bước 4.
 
-**Bước 2 — ảnh chụp baseline vpn4** (ssh-action vào vpn4):
+**Bước 2 — ảnh chụp baseline vpn4** (ssh-action vào vpn4, **`id: baseline`** — step `danger` ở
+bước 6 phụ thuộc `steps.baseline.outcome`):
 
 ```bash
 exec 9>/var/lock/vpn4-deploy
 flock -w 600 9 || exit 1
-docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/baseline-before.txt
+docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/baseline-$GITHUB_RUN_ID.txt
 ```
+
+**Tên file mang `$GITHUB_RUN_ID`, không dùng tên cố định.** `/tmp/baseline-$GITHUB_RUN_ID.txt` sống qua
+các lần deploy: bước 2 hỏng thì bước 6 và bước 5b sẽ so với **ảnh của lần trước** và cho phán
+quyết AC-21 giả — xanh giả hoặc đỏ giả, cả hai đều tệ. Áp cùng luật cho `/tmp/vpn6-*.txt`.
+`GITHUB_RUN_ID` phải nằm trong `envs:` của mọi step dùng nó.
 
 Hai dòng `flock` phải mở đầu **mọi** step ssh-action vào vpn4 (bước 2, 4, 5).
 
@@ -3522,7 +3562,7 @@ stdout bắt được tự nhiên, không phụ thuộc tính năng của action
     install -m 644 /dev/null known_hosts && echo "$VPN6_HOST_KEY_B64" | base64 -d > known_hosts
     ssh-keygen -y -f key > /dev/null
     SSHV6="ssh -i key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=known_hosts $SSH_USER_VPN6@$SSH_HOST_VPN6"
-    $SSHV6 "sudo /usr/local/bin/snapshot-vpn6.sh > /tmp/vpn6-before.txt"
+    $SSHV6 "sudo /usr/local/bin/snapshot-vpn6.sh > /tmp/vpn6-before-$GITHUB_RUN_ID.txt"
     printf '%s\n' "$OPENCODE_PG_PASSWORD" | $SSHV6 "sudo /usr/local/bin/create-opencode-db.sh"
     $SSHV6 sudo /usr/local/bin/update-permitopen.sh > permitopen.out
     grep -oE '^PG_REMOTE_HOST=([0-9]{1,3}\.){3}[0-9]{1,3}$' permitopen.out >> "$GITHUB_OUTPUT"
@@ -3534,7 +3574,7 @@ Bốn chỗ trong khối này là **kết quả của luật L4**, đừng sửa
    này thì `Host key verification failed` ngay lệnh `ssh` đầu tiên. Secret `VPN6_HOST_KEY_B64`
    trước đây chỉ được ghi ở phía **vpn4**, không phải phía runner — đúng loại lỗi mà L4(a)/(b)
    sinh ra để bắt.
-2. **Redirect `> /tmp/vpn6-before.txt` nằm TRONG dấu nháy**, tức chạy ở **vpn6**. Để ngoài nháy
+2. **Redirect `> /tmp/vpn6-before-$GITHUB_RUN_ID.txt` nằm TRONG dấu nháy**, tức chạy ở **vpn6**. Để ngoài nháy
    thì file rơi về workspace của runner, còn bước 5b lại `diff` trên vpn6 → `No such file` →
    deploy đỏ 100% ở bước cuối, sau khi đã sửa `.env`, `authorized_keys`, tạo DB và dựng 3
    container. Hai lệnh còn lại **không** cần nháy vì không có redirect phía xa.
@@ -3647,9 +3687,11 @@ install -m 600 /dev/null keys/pg_tunnel_key
 echo "$PG_TUNNEL_KEY_B64" | base64 -d > keys/pg_tunnel_key
 ssh-keygen -y -f keys/pg_tunnel_key > /dev/null
 echo "$VPN6_HOST_KEY_B64" | base64 -d > keys/known_hosts
-cp -f .env .env.bak 2>/dev/null || true
+install -m 600 .env .env.bak 2>/dev/null || true
 install -m 600 /dev/null .env
-python3 scripts/gen-env.py > .env
+python3 scripts/gen-env.py
+[ -s .env ] || exit 1
+[ -s .env.opencode ] || exit 1
 set +x
 CLIPROXY_API_KEY=$(python3 scripts/readenv.py CLIPROXY_API_KEY)
 CLIPROXY_BASE_URL=$(python3 scripts/readenv.py CLIPROXY_BASE_URL)
@@ -3684,7 +3726,12 @@ Ghi chú từng chỗ dễ sai:
   Thêm nữa `printf '%s'` **không thêm newline cuối**, và OpenSSH từ chối private key thiếu
   newline sau dòng `-----END …-----`. Base64 giải quyết cả hai. `ssh-keygen -y -f` ngay sau đó
   bắt khoá hỏng **tại chỗ**, thay vì để tunnel im lặng thử lại vô hạn 60 giây sau (§37.4).
-- **`gen-env.py`** sinh `.env` bằng `python3` (có trên vpn4 — §0.1) thay vì `printf` nhiều dòng.
+- **`gen-env.py` sinh HAI file và tự ghi ra đĩa** (không dùng `> .env`, vì phải ghi hai chỗ):
+  `.env` đầy đủ cho gateway, và `.env.opencode` **đúng hai biến** cho opencode-server. Cả hai
+  `chmod 600`. Hai dòng `[ -s … ] || exit 1` ngay sau là chốt chặn bắt buộc: file rỗng thì
+  `docker compose up` vẫn lên bình thường nhưng agent gọi cliproxy nhận 401 và người dùng chỉ
+  thấy "Thinking" treo — hỏng im lặng đúng kiểu khó truy nhất.
+  Nó chạy bằng `python3` (có trên vpn4 — §0.1) thay vì `printf` nhiều dòng.
   Hợp đồng của nó: **đọc `.env.example` làm khuôn**, thay giá trị bí mật và giá trị sinh động,
   ghi ra `.env`. **Không liệt tay danh sách biến**: `env_file: .env` là nguồn env **duy nhất**
   của Gateway (§37) mà §6 định nghĩa hơn 30 biến; liệt tay thì sót là chuyện chắc chắn, và phép
@@ -3710,7 +3757,9 @@ Ghi chú từng chỗ dễ sai:
   "`.env` sinh ra không còn chuỗi `__…__` nào". Thiếu bước này thì Gateway kết nối bằng mật khẩu
   literal `__OPENCODE_PG_PASSWORD__` → lỗi 28P01, trong khi bước verify dùng `PGPASSWORD` riêng nên **vẫn
   xanh**: deploy xanh, bot chết.
-- **`cp -f .env .env.bak`** trước khi ghi đè: §37.5.3 quay lui bằng cách `sed` trên `.env`, tức
+- **`install -m 600` chứ không `cp`** khi sao lưu `.env`: `cp` trần dùng umask nên `.env.bak`
+  thành 644 — phơi `TELEGRAM_BOT_TOKEN` và `OPENCODE_PG_PASSWORD` cho mọi user trên vpn4.
+  Sao lưu trước khi ghi đè là bắt buộc: §37.5.3 quay lui bằng cách `sed` trên `.env`, tức
   nó giả định bản cũ còn nguyên. `opencode.json` đã có `.bak`, `.env` cũng phải có.
 - **Ba biến ở dòng `docker run` đến từ ba đường khác nhau, đừng gộp:** `$GATEWAY_TAG` từ `env:` +
   `envs:` của step; `$CLIPROXY_API_KEY` và `$CLIPROXY_BASE_URL` đọc từ `.env` bằng `readenv.py`
@@ -3799,13 +3848,22 @@ test "$(free -m | awk '/^Mem:/{print $7}')" -gt 300
 # hoàn toàn khoẻ. Ba phép kiểm dưới đây tất định: có phản hồi (khác rỗng), có dấu tiếng Việt
 # (chứng minh UTF-8 đi hết đường), và không có dấu hiệu mojibake.
 # Định dạng stdout của `opencode run` phải được CHỤP ở Milestone 0 trước khi dùng làm cổng.
+#
+# KHÔNG kiểm bằng `grep`. Hai lý do, cả hai đều đã làm phép kiểm này vô hiệu một lần:
+#  (a) `grep -qv PATTERN` đảo theo TỪNG DÒNG — nó trả 0 khi có ít nhất một dòng không khớp,
+#      nên output nhiều dòng (banner + nội dung) chỉ cần một dòng sạch là qua dù các dòng
+#      khác toàn mojibake. Muốn "cả file không chứa" thì phải là `! grep -qE …`.
+#  (b) shell của ssh-action không đặt LANG -> locale C -> bracket expression hiểu theo BYTE.
+#      Ký tự "à" là C3 A0 còn mojibake "Ã" là C3 83 — chung byte đầu, nên lớp ký tự tiếng Việt
+#      khớp luôn cả file mojibake thuần. Hai phép kiểm cộng lại KHÔNG phân biệt được đúng/hỏng.
+# `scripts/check-utf8.py` decode bằng utf-8 strict, khẳng định có ký tự Việt ngoài ASCII và
+# không có dấu hiệu mojibake — làm ở tầng ký tự, không phải tầng byte.
 test "$(docker run --rm --network edge -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro --env-file /opt/opencode/.env.opencode ghcr.io/vanbienperu3107/opencode-server:${OPENCODE_TAG} opencode models | grep -c cliproxy)" -ge 1
 docker run --rm --network edge -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro --env-file /opt/opencode/.env.opencode ghcr.io/vanbienperu3107/opencode-server:${OPENCODE_TAG} opencode run --model cliproxy/claude-opus-5 "Viet mot cau tieng Viet co dau ve thoi tiet" > /tmp/smoke.txt
 test -s /tmp/smoke.txt
-grep -qE '[àáảãạăâèéẻẽẹêìíỉĩịòóỏõọôơùúủũụưỳýỷỹỵđ]' /tmp/smoke.txt
-grep -qvE 'Ã|â€|Â¢' /tmp/smoke.txt
-docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/baseline-after.txt
-diff /tmp/baseline-before.txt /tmp/baseline-after.txt
+python3 scripts/check-utf8.py /tmp/smoke.txt
+docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/after-$GITHUB_RUN_ID.txt
+diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/after-$GITHUB_RUN_ID.txt
 ```
 
 Ghi chú:
@@ -3856,7 +3914,7 @@ cũng chạy **trên vpn6**; đó là lý do redirect phải nằm trong dấu n
   # không có, phải SSH tay vào máy đang giữ headscale.
   # 5c/5d KHÔNG có always(), và đó là chủ đích: 5c là cổng kiểm (deploy đã hỏng thì kiểm cổng
   # 4096 vô nghĩa), 5d chỉ có nghĩa khi sync-models.js đã chạy xong ở bước 4.
-  # Vế outcome là bắt buộc: nếu chính bước 3 hỏng thì /tmp/vpn6-before.txt chưa tồn tại, 5b sẽ
+  # Vế outcome là bắt buộc: nếu chính bước 3 hỏng thì /tmp/vpn6-before-$GITHUB_RUN_ID.txt chưa tồn tại, 5b sẽ
   # chết ở "diff … No such file" và che mất lỗi gốc.
   # KHÔNG dùng outcome == 'success': bước 3 chạy ba lệnh mutate nối tiếp, hỏng ở lệnh 2 hoặc 3
   # nghĩa là snapshot ĐÃ chụp và DB ĐÃ được tạo — đúng lúc đó lại càng cần ảnh chụp sau.
@@ -3872,8 +3930,8 @@ cũng chạy **trên vpn6**; đó là lý do redirect phải nằm trong dấu n
     install -m 644 /dev/null known_hosts && echo "$VPN6_HOST_KEY_B64" | base64 -d > known_hosts
     ssh-keygen -y -f key > /dev/null
     SSHV6="ssh -i key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=known_hosts $SSH_USER_VPN6@$SSH_HOST_VPN6"
-    $SSHV6 "sudo /usr/local/bin/snapshot-vpn6.sh > /tmp/vpn6-after.txt"
-    $SSHV6 "diff /tmp/vpn6-before.txt /tmp/vpn6-after.txt"
+    $SSHV6 "sudo /usr/local/bin/snapshot-vpn6.sh > /tmp/vpn6-after-$GITHUB_RUN_ID.txt"
+    $SSHV6 "diff /tmp/vpn6-before-$GITHUB_RUN_ID.txt /tmp/vpn6-after-$GITHUB_RUN_ID.txt"
 ```
 
 **Khối `env:` và hai dòng dựng `key`/`known_hosts` phải lặp lại ở đây, không được dùng lại của
@@ -3958,7 +4016,14 @@ thái mà tiêu chí huỷ vừa gọi là nguy hiểm:
 # `$GITHUB_OUTPUT`, còn `capture_stdout` không tồn tại ở @v1.2.0 (§37.2 bước 3).
 - name: Do nguong nguy hiem
   id: danger
-  if: always()
+  # `steps.baseline.outcome == 'success'` là bắt buộc, không phải phòng xa: nếu bước 1 đỏ (thiếu
+  # một secret chẳng hạn) thì bước 2 skip, `/tmp/baseline-$GITHUB_RUN_ID.txt` hoặc chưa có hoặc là ẢNH
+  # CỦA LẦN DEPLOY TRƯỚC → `diff` fail → `danger=true` → gỡ sạch một stack production đang chạy
+  # tốt. Một lỗi cấu hình ở runner không được phép thành sự cố mất dịch vụ trên máy giữ DERP.
+  #
+  # Chuỗi format của `docker inspect` phải GIỐNG HỆT bước 2 — trước đây chỗ này chụp 2 trường
+  # còn baseline chụp 3, nên `diff` luôn khác rỗng và MỌI lần deploy đều tự gỡ stack vừa dựng.
+  if: always() && steps.baseline.outcome == 'success'
   env:
     SSH_KEY:           ${{ secrets.SSH_KEY }}
     VPN4_HOST_KEY_B64: ${{ secrets.VPN4_HOST_KEY_B64 }}
@@ -3969,8 +4034,8 @@ thái mà tiêu chí huỷ vừa gọi là nguy hiểm:
     install -m 600 /dev/null k4 && echo "$SSH_KEY" > k4
     install -m 644 /dev/null kh4 && echo "$VPN4_HOST_KEY_B64" | base64 -d > kh4
     SSH4="ssh -p $SSH_PORT -i k4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 $SSH_USER@$SSH_HOST_VPN4"
-    $SSH4 "docker inspect -f '{{.Name}} {{.RestartCount}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/danger-now.txt" || true
-    $SSH4 "diff -q /tmp/baseline-before.txt /tmp/danger-now.txt" > /dev/null 2>&1 || echo "danger=true" >> "$GITHUB_OUTPUT"
+    $SSH4 "docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/danger-$GITHUB_RUN_ID.txt" || true
+    $SSH4 "diff -q /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/danger-$GITHUB_RUN_ID.txt" > /dev/null 2>&1 || echo "danger=true" >> "$GITHUB_OUTPUT"
     MEMFREE=$($SSH4 "free -m | awk '/^Mem:/{print \$7}'" || echo 0)
     [ "${MEMFREE:-0}" -ge 200 ] || echo "danger=true" >> "$GITHUB_OUTPUT"
 
@@ -3991,8 +4056,8 @@ thái mà tiêu chí huỷ vừa gọi là nguy hiểm:
       flock -w 600 9 || exit 1
       cd /opt/opencode
       docker compose down
-      docker inspect -f '{{.Name}} {{.RestartCount}}' derper cliproxy > /tmp/after-abort.txt
-      diff /tmp/baseline-before.txt /tmp/after-abort.txt || true
+      docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/abort-$GITHUB_RUN_ID.txt
+      diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/abort-$GITHUB_RUN_ID.txt || true
 ```
 
 Và thêm phép so ngưỡng **200 MB** ngay trong bước 5 (hiện chỉ có ngưỡng 300 MB) để tiêu chí huỷ
@@ -4121,7 +4186,7 @@ Quay lui là ghim lại tag cũ — cùng cơ chế "pin build" đang dùng cho 
 
 ```bash
 cd /opt/opencode
-cp .env .env.bak
+install -m 600 .env .env.bak
 sed -i 's/^GATEWAY_TAG=.*/GATEWAY_TAG=<sha commit cũ>/' .env
 sed -i 's/^OPENCODE_TAG=.*/OPENCODE_TAG=<tag cũ>/' .env
 sed -i 's/^TUNNEL_TAG=.*/TUNNEL_TAG=<tag cũ>/' .env
@@ -4801,7 +4866,7 @@ Kịch bản thật đứng sau AC này: vpn6 bảo trì đúng lúc vpn4 khởi
 So sánh **ảnh chụp trước/sau** (§37.2 bước 2 và 5) — kiểm bằng máy, không bằng quan sát:
 
 ```bash
-diff /tmp/baseline-before.txt /tmp/baseline-after.txt   # phải rỗng
+diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/after-$GITHUB_RUN_ID.txt   # phải rỗng
 ```
 
 - `derper`, `edge-nginx`, `caddy-edge`, `cliproxy`, `vpn-gw`, `ts-vpngw`, `ping-reporter-vpn4`,
@@ -4902,6 +4967,10 @@ seed user     user whitelisted gõ /start lần đầu → sinh hàng telegram_u
 đồng bộ role  đổi TELEGRAM_ADMIN_USER_IDS rồi /start lại → role trong DB cập nhật theo env (§8.1)
 env đầy đủ    mọi ${VAR:?} trong compose có mặt trong .env.example (§6.2)
 env sinh đủ   mọi biến trong .env.example đều có mặt trong .env do gen-env.py sinh ra
+env opencode  .env.opencode sinh ra có ĐÚNG 2 bien (CLIPROXY_API_KEY, OPENCODE_SERVER_PASSWORD),
+              ca hai khac rong, va KHONG chua TELEGRAM_BOT_TOKEN/DATABASE_URL/OPENCODE_PG_PASSWORD
+env_file      moi env_file: trong compose deu co buoc sinh tuong ung trong deploy.yml
+inspect fmt   moi `docker inspect -f` trong deploy.yml dung CUNG mot chuoi format
 env escape    giá trị chứa ' " $ ` khoảng trắng → `docker compose config` và `readenv.py` đọc ra
               ĐÚNG giá trị gốc (một cách hiểu duy nhất, không còn source bằng shell)
 env placeholder  .env sinh ra không còn chuỗi dạng __TÊN__ nào (chống DATABASE_URL giữ nguyên
