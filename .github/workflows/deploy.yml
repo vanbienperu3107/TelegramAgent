@@ -1,0 +1,299 @@
+name: Deploy len vpn4
+
+# CHI workflow_dispatch. Repo nay PUBLIC va secret cua no gom SSH_KEY = root tren
+# vpn4 (may chay DERP relay cua ca fleet). Khong bao gio dung pull_request_target.
+on:
+  workflow_dispatch:
+
+# Cung host vpn4 voi deploy-derp-vpn4 / deploy-cliproxy / deploy-vpn-gw cua repo
+# deployHeadscale -> xep hang tuan tu, tranh tranh lock dpkg/docker.
+# LUU Y: concurrency chi co tac dung TRONG MOT REPO. Voi repo khac thi `flock`
+# tren vpn4 moi la thu that su chan.
+concurrency:
+  group: deploy-vpn4-host
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DEPLOY_PATH: /opt/opencode
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # ─── Buoc 1: kiem secret + repo variable + tag co that tren GHCR ─────────
+      - uses: actions/checkout@v4
+
+      - name: Kiem secret va repo variable bat buoc
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_USER_IDS: ${{ secrets.TELEGRAM_ALLOWED_USER_IDS }}
+          TELEGRAM_ADMIN_USER_IDS: ${{ secrets.TELEGRAM_ADMIN_USER_IDS }}
+          OPENCODE_PG_PASSWORD: ${{ secrets.OPENCODE_PG_PASSWORD }}
+          OPENCODE_SERVER_PASSWORD: ${{ secrets.OPENCODE_SERVER_PASSWORD }}
+          CLIPROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          SSH_HOST_VPN4: ${{ secrets.SSH_HOST_VPN4 }}
+          SSH_HOST_VPN6: ${{ secrets.SSH_HOST_VPN6 }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_USER_VPN6: ${{ secrets.SSH_USER_VPN6 }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KEY_VPN6_B64: ${{ secrets.SSH_KEY_VPN6_B64 }}
+          VPN4_HOST_KEY_B64: ${{ secrets.VPN4_HOST_KEY_B64 }}
+          VPN6_HOST_KEY_B64: ${{ secrets.VPN6_HOST_KEY_B64 }}
+          PG_TUNNEL_KEY_B64: ${{ secrets.PG_TUNNEL_KEY_B64 }}
+          OPENCODE_TAG: ${{ vars.OPENCODE_TAG }}
+          TUNNEL_TAG: ${{ vars.TUNNEL_TAG }}
+        run: python3 scripts/check-deploy-secrets.py
+
+      # GHCR cua tai khoan ca nhan mac dinh PRIVATE, nen runner cung phai dang
+      # nhap chu khong chi vpn4. Kiem tag TRUOC khi dung vao may nao: do o runner
+      # re hon do giua buoc 4 rat nhieu.
+      - name: Kiem tag ton tai tren GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GATEWAY_TAG: ${{ github.sha }}
+          OPENCODE_TAG: ${{ vars.OPENCODE_TAG }}
+          TUNNEL_TAG: ${{ vars.TUNNEL_TAG }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u vanbienperu3107 --password-stdin
+          docker manifest inspect ghcr.io/vanbienperu3107/opencode-telegram-gateway:$GATEWAY_TAG > /dev/null
+          docker manifest inspect ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG > /dev/null
+          docker manifest inspect ghcr.io/vanbienperu3107/pg-tunnel:$TUNNEL_TAG > /dev/null
+
+      # ─── Buoc 2: anh chup baseline vpn4 ─────────────────────────────────────
+      - name: vpn4 - anh chup baseline
+        id: baseline
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST_VPN4 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script_stop: true
+          envs: GITHUB_RUN_ID
+          script: |
+            exec 9>/var/lock/vpn4-deploy
+            flock -w 600 9 || exit 1
+            docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/baseline-$GITHUB_RUN_ID.txt
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+
+      # ─── Buoc 3: vpn6 (step `run:` tren runner, ssh tran) ───────────────────
+      # KHONG dung ssh-action o day: can ghi $GITHUB_OUTPUT de chuyen
+      # PG_REMOTE_HOST sang buoc 4, ma `capture_stdout` khong ton tai o @v1.2.0
+      # (chi co tu v1.2.1). Khai mot input la chi sinh warning va outputs.stdout
+      # se rong.
+      - name: vpn6 - chup anh, tao DB, cap nhat permitopen
+        id: vpn6
+        env:
+          SSH_KEY_VPN6_B64: ${{ secrets.SSH_KEY_VPN6_B64 }}
+          VPN6_HOST_KEY_B64: ${{ secrets.VPN6_HOST_KEY_B64 }}
+          SSH_USER_VPN6: ${{ secrets.SSH_USER_VPN6 }}
+          SSH_HOST_VPN6: ${{ secrets.SSH_HOST_VPN6 }}
+          OPENCODE_PG_PASSWORD: ${{ secrets.OPENCODE_PG_PASSWORD }}
+        run: |
+          [ -n "$OPENCODE_PG_PASSWORD" ] || exit 1
+          install -m 600 /dev/null key6 && echo "$SSH_KEY_VPN6_B64" | base64 -d > key6
+          install -m 644 /dev/null kh6 && echo "$VPN6_HOST_KEY_B64" | base64 -d > kh6
+          ssh-keygen -y -f key6 > /dev/null
+          SSHV6="ssh -i key6 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh6 $SSH_USER_VPN6@$SSH_HOST_VPN6"
+          $SSHV6 "sudo /usr/local/bin/snapshot-vpn6.sh > /tmp/vpn6-before-$GITHUB_RUN_ID.txt"
+          printf '%s\n' "$OPENCODE_PG_PASSWORD" | $SSHV6 "sudo /usr/local/bin/create-opencode-db.sh"
+          $SSHV6 sudo /usr/local/bin/update-permitopen.sh > permitopen.out
+          grep -oE '^PG_REMOTE_HOST=([0-9]{1,3}\.){3}[0-9]{1,3}$' permitopen.out >> "$GITHUB_OUTPUT"
+
+      # ─── Buoc 4: deploy tren vpn4 ──────────────────────────────────────────
+      - name: vpn4 - deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST_VPN4 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script_stop: true
+          command_timeout: 20m
+          envs: GHCR_TOKEN,DEPLOY_REF,DEPLOY_PATH,GITHUB_RUN_ID,PG_TUNNEL_KEY_B64,VPN6_HOST_KEY_B64,PG_REMOTE_HOST,GATEWAY_TAG,OPENCODE_TAG,TUNNEL_TAG,OPENCODE_SERVER_PASSWORD,CLIPROXY_API_KEY,OPENCODE_PG_PASSWORD,TELEGRAM_BOT_TOKEN,TELEGRAM_ALLOWED_USER_IDS,TELEGRAM_ADMIN_USER_IDS
+          script: |
+            set -x
+            exec 9>/var/lock/vpn4-deploy
+            flock -w 600 9 || exit 1
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u vanbienperu3107 --password-stdin
+            install -d -m 755 "$DEPLOY_PATH"
+            cd /opt/opencode
+            git config --global --add safe.directory /opt/opencode
+            test -d .git || git clone https://github.com/vanbienperu3107/TelegramAgent.git .
+            git fetch --all --prune
+            git reset --hard "origin/$DEPLOY_REF"
+            install -d -m 700 keys
+            install -m 600 /dev/null keys/pg_tunnel_key
+            echo "$PG_TUNNEL_KEY_B64" | base64 -d > keys/pg_tunnel_key
+            ssh-keygen -y -f keys/pg_tunnel_key > /dev/null
+            install -m 644 /dev/null keys/known_hosts
+            echo "$VPN6_HOST_KEY_B64" | base64 -d > keys/known_hosts
+            install -m 600 .env .env.bak 2>/dev/null || true
+            python3 scripts/gen-env.py
+            test -s .env
+            test -s .env.opencode
+            install -d -m 755 workspace
+            test -d workspace/opencode-sandbox || git clone https://github.com/vanbienperu3107/opencode-sandbox.git workspace/opencode-sandbox
+            chown -R 1000:1000 workspace
+            install -m 644 opencode.json opencode.json.bak 2>/dev/null || true
+            test -f opencode.json || printf '{}' > opencode.json
+            chmod 644 opencode.json
+            docker compose pull
+            docker run --rm --network edge -e CLIPROXY_BASE_URL -e CLIPROXY_API_KEY -v /opt/opencode/opencode.json.template:/app/opencode.json.template:ro -v /opt/opencode/opencode.json:/app/opencode.json -v /opt/opencode/docs:/app/docs -w /app --entrypoint node "ghcr.io/vanbienperu3107/opencode-telegram-gateway:$GATEWAY_TAG" scripts/sync-models.js
+            chmod 644 opencode.json
+            python3 -m json.tool opencode.json > /dev/null
+            docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" node /opt/verify-opencode-config.js
+            docker compose up -d --remove-orphans
+            docker compose up -d --force-recreate opencode-server
+            docker compose run --rm --no-deps -T --entrypoint node telegram-gateway dist/migrate.js
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          DEPLOY_REF: ${{ github.ref_name }}
+          DEPLOY_PATH: /opt/opencode
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          PG_TUNNEL_KEY_B64: ${{ secrets.PG_TUNNEL_KEY_B64 }}
+          VPN6_HOST_KEY_B64: ${{ secrets.VPN6_HOST_KEY_B64 }}
+          PG_REMOTE_HOST: ${{ steps.vpn6.outputs.PG_REMOTE_HOST }}
+          GATEWAY_TAG: ${{ github.sha }}
+          OPENCODE_TAG: ${{ vars.OPENCODE_TAG }}
+          TUNNEL_TAG: ${{ vars.TUNNEL_TAG }}
+          OPENCODE_SERVER_PASSWORD: ${{ secrets.OPENCODE_SERVER_PASSWORD }}
+          CLIPROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}
+          OPENCODE_PG_PASSWORD: ${{ secrets.OPENCODE_PG_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_USER_IDS: ${{ secrets.TELEGRAM_ALLOWED_USER_IDS }}
+          TELEGRAM_ADMIN_USER_IDS: ${{ secrets.TELEGRAM_ADMIN_USER_IDS }}
+
+      # ─── Buoc 5: verify tren vpn4 ──────────────────────────────────────────
+      - name: vpn4 - verify
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST_VPN4 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script_stop: true
+          envs: GITHUB_RUN_ID,OPENCODE_TAG,CLIPROXY_API_KEY
+          script: |
+            exec 9>/var/lock/vpn4-deploy
+            flock -w 600 9 || exit 1
+            cd /opt/opencode
+            HEALTH_PORT=$(python3 scripts/readenv.py .env HEALTH_PORT)
+            OPENCODE_PG_PASSWORD=$(python3 scripts/readenv.py .env OPENCODE_PG_PASSWORD)
+            test -n "$HEALTH_PORT"
+            test -n "$OPENCODE_PG_PASSWORD"
+            test -n "$OPENCODE_TAG"
+            test -n "$CLIPROXY_API_KEY"
+            test "$(ss -Hltn | awk '{print $4}' | grep -c ':4096$')" -eq 0
+            docker exec opencode-pg-tunnel nc -z 127.0.0.1 5433
+            docker exec -e PGPASSWORD="$OPENCODE_PG_PASSWORD" opencode-pg-tunnel psql -h 127.0.0.1 -p 5433 -U opencode -d opencode_remote -c 'SELECT 1' > /dev/null
+            j=0; until docker exec opencode-gateway wget -q --spider "http://127.0.0.1:$HEALTH_PORT/healthz"; do j=$((j+1)); test "$j" -lt 20 || exit 1; sleep 3; done
+            docker compose ps > /tmp/ps-$GITHUB_RUN_ID.txt
+            test "$(free -m | awk '/^Mem:/{print $7}')" -gt 300
+            docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" node /opt/verify-opencode-config.js
+            docker run --rm --network edge --env-file /opt/opencode/.env.opencode -e CLIPROXY_BASE_URL -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" opencode run --model cliproxy/claude-opus-5 "Viet mot cau tieng Viet co dau ve thoi tiet" > /tmp/smoke-$GITHUB_RUN_ID.txt
+            python3 scripts/check-utf8.py /tmp/smoke-$GITHUB_RUN_ID.txt
+            docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/after-$GITHUB_RUN_ID.txt
+            diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/after-$GITHUB_RUN_ID.txt
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          OPENCODE_TAG: ${{ vars.OPENCODE_TAG }}
+          CLIPROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}
+
+      # ─── Buoc 5b: anh chup SAU cua vpn6 ────────────────────────────────────
+      # KHONG dung `outcome == 'success'`: buoc 3 chay ba lenh mutate noi tiep,
+      # hong o lenh 2 hoac 3 nghia la snapshot DA chup va DB DA duoc tao — dung
+      # luc do lai cang can anh chup sau.
+      - name: vpn6 - anh chup sau
+        if: always() && steps.vpn6.outcome != 'skipped'
+        env:
+          SSH_KEY_VPN6_B64: ${{ secrets.SSH_KEY_VPN6_B64 }}
+          VPN6_HOST_KEY_B64: ${{ secrets.VPN6_HOST_KEY_B64 }}
+          SSH_USER_VPN6: ${{ secrets.SSH_USER_VPN6 }}
+          SSH_HOST_VPN6: ${{ secrets.SSH_HOST_VPN6 }}
+        run: |
+          install -m 600 /dev/null key6 && echo "$SSH_KEY_VPN6_B64" | base64 -d > key6
+          install -m 644 /dev/null kh6 && echo "$VPN6_HOST_KEY_B64" | base64 -d > kh6
+          ssh-keygen -y -f key6 > /dev/null
+          SSHV6="ssh -i key6 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh6 $SSH_USER_VPN6@$SSH_HOST_VPN6"
+          $SSHV6 "sudo /usr/local/bin/snapshot-vpn6.sh > /tmp/vpn6-after-$GITHUB_RUN_ID.txt"
+          $SSHV6 "diff /tmp/vpn6-before-$GITHUB_RUN_ID.txt /tmp/vpn6-after-$GITHUB_RUN_ID.txt"
+
+      # ─── Buoc 5c: kiem tu Internet ─────────────────────────────────────────
+      # AC-19 doi chung minh cong 4096 khong mo ra Internet, ma `ss` o buoc 5
+      # chay tren chinh vpn4 nen khong chung minh duoc dieu do.
+      - name: Kiem cong 4096 tu Internet
+        env:
+          SSH_HOST_VPN4: ${{ secrets.SSH_HOST_VPN4 }}
+        run: |
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$SSH_HOST_VPN4:4096/" || true)
+          test "${CODE:-000}" = "000"
+
+      # ─── Buoc 5d: giu models-unverified.md ─────────────────────────────────
+      - name: Keo models-unverified ve
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          VPN4_HOST_KEY_B64: ${{ secrets.VPN4_HOST_KEY_B64 }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST_VPN4: ${{ secrets.SSH_HOST_VPN4 }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+        run: |
+          install -m 600 /dev/null key4 && echo "$SSH_KEY" > key4
+          install -m 644 /dev/null kh4 && echo "$VPN4_HOST_KEY_B64" | base64 -d > kh4
+          ssh-keygen -y -f key4 > /dev/null
+          scp -P "$SSH_PORT" -i key4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 "$SSH_USER@$SSH_HOST_VPN4:/opt/opencode/docs/models-unverified.md" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: models-unverified
+          path: models-unverified.md
+
+      # ─── Buoc 6: do nguong nguy hiem + go stack neu can ────────────────────
+      # Step DO phai co that: bieu thuc tro toi mot step khong ton tai thi GitHub
+      # Actions tra chuoi rong va KHONG bao loi -> dieu kien luon false va ca co
+      # che huy thanh ma chet.
+      - name: Do nguong nguy hiem
+        id: danger
+        if: always() && steps.baseline.outcome == 'success'
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          VPN4_HOST_KEY_B64: ${{ secrets.VPN4_HOST_KEY_B64 }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST_VPN4: ${{ secrets.SSH_HOST_VPN4 }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+        run: |
+          install -m 600 /dev/null key4 && echo "$SSH_KEY" > key4
+          install -m 644 /dev/null kh4 && echo "$VPN4_HOST_KEY_B64" | base64 -d > kh4
+          SSH4="ssh -p $SSH_PORT -i key4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 $SSH_USER@$SSH_HOST_VPN4"
+          $SSH4 "docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/danger-$GITHUB_RUN_ID.txt" || true
+          $SSH4 "diff -q /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/danger-$GITHUB_RUN_ID.txt" > /dev/null 2>&1 || echo "danger=true" >> "$GITHUB_OUTPUT"
+          MEMFREE=$($SSH4 "free -m | awk '/^Mem:/{print \$7}'" || echo 0)
+          test "${MEMFREE:-0}" -ge 200 || echo "danger=true" >> "$GITHUB_OUTPUT"
+
+      # KHONG dung `if: failure()` tran: buoc 5 do o muc RAM 250 MB, hoac buoc 5d
+      # hong vi ly do vat nhu scp, cung se go nguyen mot stack dang chay tot — xoa
+      # mat chinh vung dem 200-300 MB ma tieu chi nay vua dinh nghia.
+      - name: Huy deploy va go stack
+        if: always() && steps.danger.outputs.danger == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST_VPN4 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script_stop: true
+          envs: GITHUB_RUN_ID
+          script: |
+            exec 9>/var/lock/vpn4-deploy
+            flock -w 600 9 || exit 1
+            cd /opt/opencode
+            docker compose down
+            docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/abort-$GITHUB_RUN_ID.txt
+            diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/abort-$GITHUB_RUN_ID.txt
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}

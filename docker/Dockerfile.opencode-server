@@ -1,0 +1,41 @@
+# OpenCode server — dung glibc (bookworm-slim), KHONG dung alpine.
+#
+# Ly do: goi `opencode-ai` cai binary bien dich bang Bun; alpine dung musl chu
+# khong phai glibc. Day la lop loi rat pho bien, va Milestone 0 khong nen dot
+# thoi gian debug musl — image lon hon ~80 MB trong khi vpn4 con 33 GB dia.
+#
+# Ghi phien ban that vao day sau khi Milestone 0 chot; KHONG dung tag troi.
+ARG OPENCODE_VERSION=0.0.0-can-ghim
+
+FROM node:22-bookworm-slim
+
+# Cong cu agent thuc su can. Thieu chung thi moi tool cua no deu loi:
+#   git          — doc/sua repo, tao nhanh
+#   openssh-client — git qua ssh
+#   ripgrep      — tool grep cua OpenCode
+#   ca-certificates — goi cliproxy qua mang edge
+#   tini         — tien trinh con (bash tool, git) khong thanh zombie khi agent
+#                  huy task giua chung
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      git openssh-client ripgrep ca-certificates tini \
+ && rm -rf /var/lib/apt/lists/*
+
+ARG OPENCODE_VERSION
+RUN npm i -g "opencode-ai@${OPENCODE_VERSION}" && npm cache clean --force
+
+# Chay HAI lan trong deploy (buoc 4 truoc `up -d`, va buoc 5). Duong dan tuyet doi.
+COPY scripts/verify-opencode-config.js /opt/verify-opencode-config.js
+
+# Thu muc cau hinh phai ton tai TRUOC khi compose bind-mount mot FILE vao trong no.
+RUN mkdir -p /home/node/.config/opencode && chown -R node:node /home/node/.config
+# git tu choi lam viec trong repo thuoc user khac ("dubious ownership"); workspace
+# duoc clone bang root tren host roi chown 1000.
+RUN git config --system --add safe.directory /workspace \
+ && git config --system --add safe.directory '/workspace/*'
+
+USER node
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# --hostname 0.0.0.0 chi co nghia trong khong gian mang cua container; compose
+# KHONG publish cong nao nen no van khong lo ra host (§34).
+CMD ["opencode", "serve", "--port", "4096", "--hostname", "0.0.0.0"]

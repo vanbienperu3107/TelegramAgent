@@ -25,11 +25,29 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Cai phu thuoc test
         run: pip install pytest pyyaml
 
       - name: Chay test
         run: pytest tests/ -v
+
+      - name: Luat L1-L5 cua deploy.yml
+        run: python3 scripts/check-deploy-policy.py
+
+      - name: Lint cu phap 3 script vpn6
+        run: bash -n scripts/vpn6/create-opencode-db.sh scripts/vpn6/update-permitopen.sh scripts/vpn6/snapshot-vpn6.sh
+
+      - name: Kiem cu phap JavaScript
+        run: |
+          node --check scripts/sync-models.js
+          node --check scripts/verify-opencode-config.js
+
+      - name: opencode.json.template phai la JSON hop le
+        run: python3 -m json.tool opencode.json.template > /dev/null
 
       # Sinh env bang chinh gen-env.py cua deploy. Buoc nay dong thoi chung minh
       # duong sinh file chay duoc that: `docker compose config` KIEM SU TON TAI

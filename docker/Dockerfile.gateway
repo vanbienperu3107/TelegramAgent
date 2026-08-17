@@ -1,0 +1,31 @@
+# Telegram Gateway — Node 22, multi-stage, chay bang user khong phai root.
+# mem_limit 256m tren vpn4 (§37.1), nen image phai gon va khong keo devDependencies.
+
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig*.json ./
+COPY src ./src
+# dist/ phai chua CA index.js LAN migrate.js: buoc 4 cua deploy chay
+# `--entrypoint node telegram-gateway dist/migrate.js`. Build chi sinh index.js
+# la deploy do dung o buoc migration.
+RUN npm run build && test -f dist/index.js && test -f dist/migrate.js
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+# Tran heap phai THAP HON mem_limit 256m: V8 khong biet gi ve cgroup, khong dat
+# thi no cu lon toi khi kernel OOM-kill giua task.
+ENV NODE_OPTIONS=--max-old-space-size=192
+
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build /app/dist ./dist
+# sync-models.js chay bang `docker run --rm --entrypoint node` o buoc 4 deploy.
+COPY scripts/sync-models.js ./scripts/sync-models.js
+
+USER node
+# KHONG khai HEALTHCHECK o day: docker-compose.yml la ban dinh nghia duy nhat,
+# hai noi khai thi mot noi se lech.
+CMD ["node", "dist/index.js"]
