@@ -88,21 +88,29 @@ def check_l2(name, step, script, loi):
         loi.append("%s: %s dung docker tren vpn4 ma khong lay khoa flock" % (name, step))
 
 
-def check_l4_env(name, step, script, spec, loi):
+def check_l4_env(name, label, script, step, loi):
     """Hai tang env cua ssh-action.
 
     `envs:` CHI LA BO CHON TEN — no noi "chuyen tiep cac bien nay sang may xa".
     GIA TRI van phai den tu khoi `env:` cua chinh step. Khai ten trong `envs:` ma
     khong dinh nghia trong `env:` = bien rong o dau ben kia, khong canh bao.
+
+    Quy uoc tham so, dung nhat quan o moi ham trong file nay: `label` la ten step
+    (chuoi, chi de bao loi), `step` la dict de doc `env:`/`with:`. Ban dau hai cai
+    nay bi trao cho nhau o ca hai ham va CI bat duoc ca hai lan.
     """
-    forwarded = {n.strip() for n in (spec.get("with", {}).get("envs") or "").split(",") if n.strip()}
+    forwarded = {
+        n.strip()
+        for n in ((step.get("with") or {}).get("envs") or "").split(",")
+        if n.strip()
+    }
     defined = set(step.get("env") or {})
     for var in sorted(forwarded - defined):
-        loi.append("%s: %s khai '%s' trong envs: nhung khong dinh nghia trong env:" % (name, step, var))
+        loi.append("%s: %s khai '%s' trong envs: nhung khong dinh nghia trong env:" % (name, label, var))
 
     used = used_names(script) - assigned_names(script) - BUILTIN
     for var in sorted(used - forwarded - defined):
-        loi.append("%s: %s doc $%s ma bien nay khong co nguon gia tri nao" % (name, step, var))
+        loi.append("%s: %s doc $%s ma bien nay khong co nguon gia tri nao" % (name, label, var))
 
 
 def check_l4_run(name, label, script, step, loi):
