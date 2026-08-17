@@ -126,6 +126,24 @@ def check_l4_run(name, label, script, step, loi):
         loi.append("%s: %s (run) doc $%s ma khong co trong env: cua step" % (name, label, var))
 
 
+def moi_script(doc):
+    """Gop noi dung script cua MOI step lai, doc tu cau truc da phan tich.
+
+    KHONG quet van ban tho cua file YAML: `yaml.safe_dump` co the boc scalar bang
+    nhay kep, escape ky tu, hoac ngat dong o cot 80 — luc do mot chuoi lenh bi cat
+    thanh hai va bieu thuc chinh quy khong con khop dung. Doc cau truc thi mien
+    nhiem voi moi cach trinh bay. Day la cung mot bai hoc voi lop loi tu-to-cao
+    o tests/helpers.py: dung cau truc, dung van ban.
+    """
+    parts = []
+    for step in steps_of(doc):
+        if step.get("uses", "").startswith(SSH_ACTION):
+            parts.append((step.get("with") or {}).get("script") or "")
+        elif "run" in step:
+            parts.append(step["run"])
+    return "\n".join(parts)
+
+
 def check_l3_inspect(name, doc_text, loi):
     """Moi `docker inspect -f` dung CUNG mot chuoi format.
 
@@ -185,8 +203,11 @@ def main():
         text = path.read_text(encoding="utf-8")
         doc = yaml.safe_load(text) or {}
 
-        check_l3_inspect(name, text, loi)
-        check_l4_tmpfile(name, text, loi)
+        scripts = moi_script(doc)
+        check_l3_inspect(name, scripts, loi)
+        check_l4_tmpfile(name, scripts, loi)
+        # Tham chieu secret nam trong khoi `env:`, khong nam trong script — cai nay
+        # doc van ban file la dung cho.
         check_l5_secrets_declared(name, text, loi)
 
         for step in steps_of(doc):
