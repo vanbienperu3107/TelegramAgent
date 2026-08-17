@@ -105,12 +105,17 @@ def check_l4_env(name, step, script, spec, loi):
         loi.append("%s: %s doc $%s ma bien nay khong co nguon gia tri nao" % (name, step, var))
 
 
-def check_l4_run(name, step, script, loi):
-    """Step `run:` tren runner: moi $VAR phai co nguon."""
+def check_l4_run(name, label, script, step, loi):
+    """Step `run:` tren runner: moi $VAR phai co nguon.
+
+    Chu y thu tu tham so: `label` la ten step (chuoi) de bao loi, `step` la dict
+    de doc `env:`. Ban dau hai cai nay bi trao cho nhau va CI bat duoc ngay —
+    AttributeError: 'str' object has no attribute 'get'.
+    """
     used = used_names(script) - assigned_names(script) - BUILTIN
     defined = set(step.get("env") or {})
     for var in sorted(used - defined):
-        loi.append("%s: %s (run) doc $%s ma khong co trong env: cua step" % (name, step, var))
+        loi.append("%s: %s (run) doc $%s ma khong co trong env: cua step" % (name, label, var))
 
 
 def check_l3_inspect(name, doc_text, loi):
@@ -186,7 +191,7 @@ def main():
                 if (step.get("with") or {}).get("script_stop") is not True:
                     loi.append("%s: %s thieu script_stop: true" % (name, label))
             elif "run" in step:
-                check_l4_run(name, label, step["run"], loi)
+                check_l4_run(name, label, step["run"], step, loi)
 
     if loi:
         for dong in loi:

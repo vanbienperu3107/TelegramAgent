@@ -8,8 +8,12 @@ import pathlib
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from helpers import bo_comment_shell  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 VPN6 = ROOT / "scripts" / "vpn6"
@@ -46,7 +50,10 @@ def test_cu_phap_bash_hop_le(path):
 def test_khong_nhan_tham_so_tu_ngoai(path):
     """Sudoers whitelist chi cho phep chay dung ba script nay. Neu chung nhan
     tham so thi whitelist khong con y nghia — nguoi goi truyen gi cung duoc."""
-    text = path.read_text(encoding="utf-8")
+    text = bo_comment_shell(path.read_text(encoding="utf-8"))
+    # Bo khoi awk truoc khi tim: `$1` trong awk la TRUONG cua dong dau vao, khong
+    # phai tham so vi tri cua shell. CI bat duoc ca nay ngay lan chay dau.
+    text = re.sub(r"awk\s+'[^']*'", "awk '...'", text)
     assert not re.search(r"\$\{?[1-9]\}?", text), "script nhan tham so vi tri"
     assert '"$@"' not in text
 
@@ -147,7 +154,9 @@ def test_snapshot_khong_chup_truong_bien_thien():
     """Chup truong bien thien la lam `diff` LUON khac rong -> buoc 5b do -> tieu
     chi huy deploy go luon stack vua dung xong. DB derp nhan telemetry ca fleet
     moi 3 giay."""
-    text = SNAPSHOT.read_text(encoding="utf-8")
+    # Bo comment truoc khi tim: chinh script co comment giai thich VI SAO khong
+    # duoc chup hai truong nay, nen tim chuoi tho lam no tu to cao minh.
+    text = bo_comment_shell(SNAPSHOT.read_text(encoding="utf-8"))
     assert "pg_database_size" not in text
     assert "pg_stat_activity" not in text
 

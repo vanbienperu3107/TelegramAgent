@@ -17,6 +17,9 @@ import sys
 import pytest
 import yaml
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from helpers import bo_comment_yaml  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CHECKER = ROOT / "scripts" / "check-deploy-policy.py"
 DEPLOY = ROOT / ".github" / "workflows" / "deploy.yml"
@@ -220,7 +223,10 @@ def test_step_go_stack_khong_dung_failure_tran(deploy):
 def test_khong_dung_capture_stdout(deploy):
     """Tuy chon do khong ton tai o @v1.2.0 (chi co tu v1.2.1). Khai mot input la
     chi sinh warning, con outputs.stdout se la chuoi RONG."""
-    text = DEPLOY.read_text(encoding="utf-8")
+    # Bo comment truoc khi tim: chinh deploy.yml co comment giai thich vi sao
+    # KHONG dung tuy chon nay, nen tim chuoi tho lam file tu to cao minh. Day la
+    # lan thu ba lop loi nay xuat hien, nen no da thanh tien ich dung chung.
+    text = bo_comment_yaml(DEPLOY.read_text(encoding="utf-8"))
     assert "capture_stdout" not in text
 
 
@@ -228,5 +234,5 @@ def test_khong_dung_run_number_cho_tag(deploy):
     """run_number dem RIENG cho tung workflow. Hau qua te nhat khong phai "tag
     khong ton tai" ma la "tag trung so tinh co" -> pull thanh cong, deploy xanh,
     nhung trien khai dung mot build khac."""
-    text = DEPLOY.read_text(encoding="utf-8")
+    text = bo_comment_yaml(DEPLOY.read_text(encoding="utf-8"))
     assert "run_number" not in text

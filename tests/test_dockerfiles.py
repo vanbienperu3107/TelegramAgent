@@ -5,8 +5,12 @@ doc duoc tu van ban, moi tinh chat gan voi mot rui ro cu the da biet.
 """
 import pathlib
 import re
+import sys
 
 import pytest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from helpers import dong_lenh_dockerfile  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOCKER = ROOT / "docker"
@@ -34,8 +38,15 @@ def test_khong_dung_tag_troi_cho_base_image(path):
 @pytest.mark.parametrize("path", ALL, ids=lambda p: p.name)
 def test_khong_khai_healthcheck(path):
     """docker-compose.yml la ban dinh nghia duy nhat cua healthcheck; hai noi khai
-    thi mot noi se lech."""
-    assert "HEALTHCHECK" not in path.read_text(encoding="utf-8")
+    thi mot noi se lech.
+
+    Kiem CHI THI chu khong kiem van ban: mot Dockerfile giai thich vi sao no khong
+    khai HEALTHCHECK thi comment cua no chua dung chuoi do, va phep kiem se lam
+    file tu to cao minh. Day la lan thu hai lop loi nay xuat hien (lan dau: buoc
+    CI kiem pull_request_target).
+    """
+    for line in dong_lenh_dockerfile(path.read_text(encoding="utf-8")):
+        assert not line.upper().startswith("HEALTHCHECK"), line
 
 
 # ─── gateway ─────────────────────────────────────────────────────────────────
@@ -75,9 +86,14 @@ def test_opencode_dung_glibc_khong_dung_alpine():
     """Goi `opencode-ai` cai binary bien dich bang Bun; alpine dung musl chu khong
     phai glibc. Day la lop loi rat pho bien, va Milestone 0 khong nen dot thoi gian
     debug musl — image lon hon ~80 MB trong khi vpn4 con 33 GB dia."""
-    text = OPENCODE.read_text(encoding="utf-8")
-    assert "alpine" not in text
-    assert "bookworm" in text
+    froms = [
+        line for line in dong_lenh_dockerfile(OPENCODE.read_text(encoding="utf-8"))
+        if line.upper().startswith("FROM")
+    ]
+    assert froms
+    for line in froms:
+        assert "alpine" not in line, line
+    assert any("bookworm" in line for line in froms)
 
 
 def test_opencode_ghim_phien_ban_qua_build_arg():
