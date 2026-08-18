@@ -106,6 +106,31 @@ vậy trở thành *chỉ để phòng khi ai đó siết `pg_hba` về sau*, kh
 
 **Lệnh có trên vpn6 (đã kiểm `command -v`):** `/usr/bin/{diff,sudo,docker,base64,install}`.
 
+**`datacl` và role — đo 2026-08-18, TRƯỚC khi `REVOKE TEMP` chạy lần đầu.** Đây là bằng chứng
+cho câu "không đụng quyền của dịch vụ nào đang chạy", câu mà trước đó chỉ là suy luận:
+
+```text
+derp       owner=derp       datacl={=Tc/derp,       derp=CTc/derp,           tailnet_rw=CTc/derp}
+headscale  owner=headscale  datacl={=Tc/headscale,  headscale=CTc/headscale, tailnet_rw=CTc/headscale}
+postgres   owner=derp       datacl=NULL
+
+role login được:  derp (SUPERUSER) · headscale · tailnet_admin
+thành viên:       tailnet_admin -> tailnet_rw
+đang kết nối:     derp->derp · derp->postgres · headscale->headscale
+```
+
+Đọc ACL: `=Tc/…` là quyền của **PUBLIC** (`T`=TEMPORARY, `c`=CONNECT). Vậy PUBLIC đang thật sự có
+TEMP, và `REVOKE TEMP … FROM PUBLIC` sẽ đổi nó thành `=c/…`.
+
+**Kết luận: an toàn.** Mọi role login đều có TEMPORARY qua đường **grant tường minh**, không qua
+PUBLIC — `derp` là superuser nên bỏ qua mọi kiểm ACL; `headscale` có `CTc` trực tiếp;
+`tailnet_admin` thừa kế qua `tailnet_rw` vốn có `CTc` trên cả hai DB. Principal duy nhất mất TEMP
+sau khi revoke chính là role `opencode` sắp tạo — đúng ý đồ.
+
+Ghi chú phạm vi: `REVOKE TEMP` chỉ chặn `CREATE TEMP TABLE`. Temp **file** do sort/hash sinh ra
+không chịu quyền này — `temp_file_limit = 64MB` đặt trên role `opencode` mới là thứ chặn nó. Cần
+cả hai để bịt đường làm đầy đĩa vpn6.
+
 Ngoài ra, `trust` cho `127.0.0.1` nghĩa là **bất kỳ ai vào được host vpn6 đều vào được mọi DB
 không cần mật khẩu** — không phải việc của dự án này, nhưng là lý do nữa để `SSH_USER_VPN6`
 không được là root và sudoers phải whitelist đúng 3 script (§6.3).

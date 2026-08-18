@@ -1,0 +1,25 @@
+{
+  "name": "opencode-telegram-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Telegram Bot lam mobile remote UI cho OpenCode",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "grammy": "^1.32.0",
+    "pino": "^9.6.0",
+    "postgres": "^3.4.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.4"
+  }
+}

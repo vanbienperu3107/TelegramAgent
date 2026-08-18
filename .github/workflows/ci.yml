@@ -43,11 +43,30 @@ jobs:
 
       - name: Kiem cu phap JavaScript
         run: |
-          node --check scripts/sync-models.js
-          node --check scripts/verify-opencode-config.js
+          node --check scripts/sync-models.cjs
+          node --check scripts/verify-opencode-config.cjs
 
       - name: opencode.json.template phai la JSON hop le
         run: python3 -m json.tool opencode.json.template > /dev/null
+
+  gateway:
+    name: Gateway (typecheck + build + unit test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      # dist/ phai co CA HAI: buoc 4 cua deploy chay dist/migrate.js bang
+      # `--entrypoint node`. Build chi sinh index.js la deploy do o buoc migration.
+      - name: dist phai co ca index.js lan migrate.js
+        run: |
+          test -f dist/index.js
+          test -f dist/db/migrate.js
+      - run: npm test
 
       # Sinh env bang chinh gen-env.py cua deploy. Buoc nay dong thoi chung minh
       # duong sinh file chay duoc that: `docker compose config` KIEM SU TON TAI

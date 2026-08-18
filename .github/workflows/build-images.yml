@@ -35,17 +35,32 @@ permissions:
 
 jobs:
   gateway:
-    # Chi build khi da co src/ — Milestone 0 chua co ma Gateway.
-    if: hashFiles('src/**') != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+
+      # KHONG dung `if: hashFiles(...)` o cap JOB: ham do khong ton tai trong
+      # ngu canh do va GitHub tu choi CA WORKFLOW voi HTTP 422 luc dispatch —
+      # loi chi lo ra khi that su chay, khong phai luc doc file.
+      # Nhanh Milestone 0 chua co src/, nen bo qua co kiem soat thay vi do.
+      - id: check
+        run: |
+          if [ -d src ] && [ -f package.json ]; then
+            echo "co_src=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "co_src=false" >> "$GITHUB_OUTPUT"
+            echo "Nhanh nay chua co src/ — bo qua build gateway" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - if: steps.check.outputs.co_src == 'true'
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+
+      - if: steps.check.outputs.co_src == 'true'
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.gateway

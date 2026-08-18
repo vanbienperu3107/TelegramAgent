@@ -68,12 +68,12 @@ def test_gateway_kiem_ca_index_va_migrate_khi_build():
     Build chi sinh index.js la deploy do dung o buoc migration."""
     text = GATEWAY.read_text(encoding="utf-8")
     assert "test -f dist/index.js" in text
-    assert "test -f dist/migrate.js" in text
+    assert "test -f dist/db/migrate.js" in text
 
 
 def test_gateway_co_sync_models():
     """Buoc 4 chay no bang `docker run --rm --entrypoint node` tren image nay."""
-    assert "scripts/sync-models.js" in GATEWAY.read_text(encoding="utf-8")
+    assert "scripts/sync-models.cjs" in GATEWAY.read_text(encoding="utf-8")
 
 
 def test_gateway_khong_keo_devdependencies_vao_runtime():
@@ -129,7 +129,7 @@ def test_opencode_khai_safe_directory_cho_workspace():
 
 
 def test_opencode_co_verify_script_o_duong_dan_tuyet_doi():
-    assert "/opt/verify-opencode-config.js" in OPENCODE.read_text(encoding="utf-8")
+    assert "/opt/verify-opencode-config.cjs" in OPENCODE.read_text(encoding="utf-8")
 
 
 def test_opencode_chay_bang_user_node():

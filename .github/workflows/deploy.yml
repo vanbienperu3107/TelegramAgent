@@ -144,13 +144,13 @@ jobs:
             test -f opencode.json || printf '{}' > opencode.json
             chmod 644 opencode.json
             docker compose pull
-            docker run --rm --network edge -e CLIPROXY_BASE_URL -e CLIPROXY_API_KEY -v /opt/opencode/opencode.json.template:/app/opencode.json.template:ro -v /opt/opencode/opencode.json:/app/opencode.json -v /opt/opencode/docs:/app/docs -w /app --entrypoint node "ghcr.io/vanbienperu3107/opencode-telegram-gateway:$GATEWAY_TAG" scripts/sync-models.js
+            docker run --rm --network edge -e CLIPROXY_BASE_URL -e CLIPROXY_API_KEY -v /opt/opencode/opencode.json.template:/app/opencode.json.template:ro -v /opt/opencode/opencode.json:/app/opencode.json -v /opt/opencode/docs:/app/docs -w /app --entrypoint node "ghcr.io/vanbienperu3107/opencode-telegram-gateway:$GATEWAY_TAG" scripts/sync-models.cjs
             chmod 644 opencode.json
             python3 -m json.tool opencode.json > /dev/null
-            docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" node /opt/verify-opencode-config.js
+            docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" node /opt/verify-opencode-config.cjs
             docker compose up -d --remove-orphans
             docker compose up -d --force-recreate opencode-server
-            docker compose run --rm --no-deps -T --entrypoint node telegram-gateway dist/migrate.js
+            docker compose run --rm --no-deps -T --entrypoint node telegram-gateway dist/db/migrate.js
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           DEPLOY_REF: ${{ github.ref_name }}
@@ -195,7 +195,7 @@ jobs:
             j=0; until docker exec opencode-gateway wget -q --spider "http://127.0.0.1:$HEALTH_PORT/healthz"; do j=$((j+1)); test "$j" -lt 20 || exit 1; sleep 3; done
             docker compose ps > /tmp/ps-$GITHUB_RUN_ID.txt
             test "$(free -m | awk '/^Mem:/{print $7}')" -gt 300
-            docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" node /opt/verify-opencode-config.js
+            docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" node /opt/verify-opencode-config.cjs
             docker run --rm --network edge --env-file /opt/opencode/.env.opencode -e CLIPROXY_BASE_URL -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" opencode run --model cliproxy/claude-opus-5 "Viet mot cau tieng Viet co dau ve thoi tiet" > /tmp/smoke-$GITHUB_RUN_ID.txt
             python3 scripts/check-utf8.py /tmp/smoke-$GITHUB_RUN_ID.txt
             docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/after-$GITHUB_RUN_ID.txt
