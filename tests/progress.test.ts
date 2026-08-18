@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { BoGopTienDo, CongTacSua, TRAN_TIN_NHAN, veTienDo } from '../src/services/progress.js';
+import type { TienDo } from '../src/services/progress.js';
 import type { SuKien } from '../src/services/event-stream.js';
 
 const GOC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -193,7 +194,7 @@ describe('cong tac chong sua qua day', () => {
     // delta den theo TUNG TOKEN — hang chuc su kien moi giay. Sua theo tung su
     // kien la 429 chac chan.
     const ct = new CongTacSua(3000);
-    const td = { trangThai: 'dang-chay', van: 'x', tool: [], quyenDangCho: null, banThay: true } as const;
+    const td: TienDo = { trangThai: 'dang-chay', van: 'x', tool: [], quyenDangCho: null, banThay: true };
     expect(ct.nenSua(td, 1000)).toBe(true);
     expect(ct.nenSua(td, 1500)).toBe(false);
     expect(ct.nenSua(td, 2999)).toBe(false);
@@ -203,7 +204,7 @@ describe('cong tac chong sua qua day', () => {
   it('KHONG chan trang thai cuoi va cua duyet', () => {
     // Nguoi dung dang cho de bam nut; 3 giay o day la 3 giay agent dung im.
     const ct = new CongTacSua(3000);
-    const dangChay = { trangThai: 'dang-chay', van: 'x', tool: [], quyenDangCho: null, banThay: true } as const;
+    const dangChay: TienDo = { trangThai: 'dang-chay', van: 'x', tool: [], quyenDangCho: null, banThay: true };
     ct.nenSua(dangChay, 1000);
     for (const tt of ['cho-duyet', 'xong', 'loi'] as const) {
       expect(ct.nenSua({ ...dangChay, trangThai: tt }, 1001)).toBe(true);
