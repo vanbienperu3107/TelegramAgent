@@ -57,7 +57,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install
+      - run: npm ci
       - run: npm run typecheck
       - run: npm run build
       # dist/ phai co CA HAI: buoc 4 cua deploy chay dist/migrate.js bang
