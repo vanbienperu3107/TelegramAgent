@@ -175,8 +175,12 @@ export function veTienDo(td: Readonly<TienDo>, giay: number): string {
 
   if (td.quyenDangCho) {
     dong.push('');
-    dong.push(`Agent xin quyen \`${td.quyenDangCho.permission}\``);
-    if (td.quyenDangCho.lenh) dong.push(`\`${catDuoi(td.quyenDangCho.lenh, 200)}\``);
+    // Khong dung dau nhay nguoc: tin nhan tien do gui KHONG kem parse_mode, nen
+    // chung hien ra nguyen xi tren man hinh. Va khong the bat parse_mode o day —
+    // van ban cua agent chua ky tu tuy y, mot dau sao le la Telegram tra 400 va
+    // ca ban cap nhat bi mat.
+    dong.push(`Agent xin quyen: ${td.quyenDangCho.permission}`);
+    if (td.quyenDangCho.lenh) dong.push(catDuoi(td.quyenDangCho.lenh, 200));
   }
 
   if (td.van.trim().length > 0) {

@@ -20,6 +20,10 @@ export interface CuaSoTelegram {
   suaTinNhan: (chatId: bigint, messageId: bigint, van: string, banPhim?: unknown) => Promise<void>;
 }
 
+function giay(dc: { batDau: number }): number {
+  return Math.round((Date.now() - dc.batDau) / 1000);
+}
+
 interface TaskDangChay {
   task: Task;
   gop: BoGopTienDo;
@@ -66,21 +70,47 @@ export class BoChayTask {
     // Sinh truoc de ghi so va gui prompt dung mot id.
     const messageID = `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 
+    const gop = new BoGopTienDo(doiSo.sessionID, messageID);
+
+    // GUI TIN NHAN TRUOC, ghi so sau.
+    //
+    // Truoc day thu tu la: INSERT task (307 ms) -> gui tin nhan -> UPDATE gan id
+    // tin nhan (307 ms) -> moi gui prompt. Tuc nguoi dung khong thay gi trong
+    // hon nua giay, va prompt chi bat dau chay sau HAI vong DB noi tiep. §7.10
+    // dat ngan sach 2 luot truy van cho MOT thao tac; cho nay dung 2 luot chi de
+    // ghi so, truoc khi lam bat ky viec gi co ich.
+    //
+    // Gui tin nhan truoc cho phan hoi ngay, va id tin nhan di thang vao INSERT —
+    // con MOT luot truy van tren duong di. Thu tu con lai van giu nguyen y nghia
+    // cu: task phai co trong so TRUOC khi prompt chay, neu khong su kien dau tien
+    // den ma khong tim thay task nao de gan vao.
+    const idTin = await this.tg.guiTinNhan(
+      doiSo.telegramChatId,
+      veTienDo(gop.trangThaiHienTai(), 0),
+    );
+
     let task: Task;
     try {
       task = await this.khoTask.taoTask({
         telegramUserId: doiSo.telegramUserId,
         telegramChatId: doiSo.telegramChatId,
+        telegramStatusMessageId: idTin,
         opencodeSessionId: doiSo.sessionID,
         opencodeMessageId: messageID,
         prompt: doiSo.van,
       });
     } catch (e) {
-      if (e instanceof DaCoTaskDangChay) return { ok: false, lyDo: 'da-co-task' };
+      if (e instanceof DaCoTaskDangChay) {
+        // Da lo gui tin nhan roi thi sua no thay vi bo lai mot dong "dang chay"
+        // chet tren man hinh.
+        await this.tg
+          .suaTinNhan(doiSo.telegramChatId, idTin, '⏳ Ban dang co mot task chay do. Doi no xong hoac dung /abort.')
+          .catch(() => undefined);
+        return { ok: false, lyDo: 'da-co-task' };
+      }
       throw e;
     }
 
-    const gop = new BoGopTienDo(doiSo.sessionID, messageID);
     const dangChay: TaskDangChay = {
       task,
       gop,
@@ -89,13 +119,6 @@ export class BoChayTask {
       quyenDaHien: new Set(),
     };
     this.theoPhien.set(doiSo.sessionID, dangChay);
-
-    const idTin = await this.tg.guiTinNhan(
-      doiSo.telegramChatId,
-      veTienDo(gop.trangThaiHienTai(), 0),
-    );
-    dangChay.task = { ...task, telegramStatusMessageId: idTin };
-    await this.khoTask.ganTinNhanTrangThai(task.id, idTin);
 
     try {
       // Chi dat truong khi THAT SU co gia tri: voi exactOptionalPropertyTypes,
@@ -141,29 +164,42 @@ export class BoChayTask {
 
   private async veLai(dc: TaskDangChay): Promise<void> {
     const td = dc.gop.trangThaiHienTai();
-    if (!dc.congTac.nenSua(td)) return;
-    dc.gop.danhDauDaVe();
-
-    const giay = Math.round((Date.now() - dc.batDau) / 1000);
     const idTin = dc.task.telegramStatusMessageId;
-    if (idTin === null) return;
 
-    // Nut duyet chi gui MOT lan cho moi yeu cau: sua lai ban phim moi vai giay
-    // lam nut nhay duoi ngon tay nguoi dung.
-    let banPhim: unknown;
-    const q = td.quyenDangCho;
-    if (q && !dc.quyenDaHien.has(q.id)) {
-      dc.quyenDaHien.add(q.id);
-      banPhim = this.banPhimDuyet(q.id);
-      await this.khoTask.doiTrangThai(dc.task.id, 'waiting_permission');
+    // Quyet dinh KET THUC khong duoc phu thuoc vao cong tac chong sua qua day.
+    // Neu de chung mot nhanh thi mot lan bi chan la task khong bao gio dong,
+    // khoa khong bao gio nha.
+    const nenSua = dc.congTac.nenSua(td) && idTin !== null;
+
+    if (nenSua) {
+      dc.gop.danhDauDaVe();
+
+      // LUON gan lai ban phim khi con dang cho duyet.
+      //
+      // Telegram coi viec sua tin nhan MA KHONG KEM `reply_markup` la lenh XOA
+      // ban phim. Truoc day cho nay chi gan nut o lan sua dau tien, nen su kien
+      // ke tiep (message.part.updated, session.updated — den lien tuc) sua lai
+      // tin nhan khong kem nut va NUT BIEN MAT trong chua day mot giay. Nguoi
+      // dung nhin thay dong "Cho ban duyet" ma khong co gi de bam, va agent cho
+      // vinh vien.
+      let banPhim: unknown;
+      const q = td.quyenDangCho;
+      if (q) {
+        banPhim = this.banPhimDuyet(q.id);
+        if (!dc.quyenDaHien.has(q.id)) {
+          // Rieng viec doi trang thai trong DB thi chi mot lan cho moi yeu cau.
+          dc.quyenDaHien.add(q.id);
+          await this.khoTask.doiTrangThai(dc.task.id, 'waiting_permission');
+        }
+      }
+
+      await this.tg
+        .suaTinNhan(dc.task.telegramChatId, idTin as bigint, veTienDo(td, giay(dc)), banPhim)
+        .catch((e) => {
+          // 429 hoac "message is not modified" khong duoc lam hong task.
+          this.log.warn({ err: e }, 'sua tin nhan tien do that bai');
+        });
     }
-
-    await this.tg
-      .suaTinNhan(dc.task.telegramChatId, idTin, veTienDo(td, giay), banPhim)
-      .catch((e) => {
-        // 429 hoac "message is not modified" khong duoc lam hong task.
-        this.log.warn({ err: e }, 'sua tin nhan tien do that bai');
-      });
 
     if (td.trangThai === 'xong') await this.ketThuc(dc);
   }

@@ -304,6 +304,22 @@ async function main() {
     return state.currentSessionId;
   };
 
+  bot.command(moiTenCua('dong'), async (ctx) => {
+    if (!(await doiDb(ctx))) return;
+    const state = cache.get(ctx.auth.userId);
+    if (state.currentSessionId === null) {
+      await ctx.reply('💬 Ban khong co phien nao dang mo.');
+      return;
+    }
+    const co = await khoPhien.luuTru(state.currentSessionId, ctx.auth.userId);
+    await cache.set(ctx.auth.userId, { currentSessionId: null });
+    await ctx.reply(
+      co
+        ? '📕 Da dong phien. Dung /new de tao phien moi.'
+        : '📕 Phien khong con trong danh sach. Da bo chon.',
+    );
+  });
+
   bot.command(moiTenCua('diff'), async (ctx) => {
     const phien = await phienHienTai(ctx);
     if (phien === null) return;
@@ -357,9 +373,13 @@ async function main() {
       modelID: state.currentModelId,
       agent: state.currentAgent,
     });
-    if (!kq.ok) {
-      await ctx.reply('⏳ Ban dang co mot task chay do. Doi no xong hoac dung /abort.');
-    }
+    if (!kq.ok) return; // bo chay task da sua chinh tin nhan trang thai de bao
+
+    // Dat tua de phien theo cau hoi dau tien. KHONG `await` tren duong di: day la
+    // viec lam dep danh sach, khong duoc lam cham cau tra loi them mot vong 307 ms.
+    void khoPhien
+      .datTuaDeTuPrompt(state.currentSessionId, ctx.message.text)
+      .catch((e) => log.warn({ err: e }, 'khong dat duoc tua de phien'));
   });
 
   bot.catch((err) => {

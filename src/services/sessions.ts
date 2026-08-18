@@ -167,6 +167,23 @@ export class KhoPhien {
     return r ? tuRowPhien(r) : null;
   }
 
+  /**
+   * Dat tua de tu cau hoi DAU TIEN cua phien.
+   *
+   * OpenCode dat tua de mac dinh la "New session - <dau thoi gian ISO>", nen sau
+   * vai phien thi danh sach chi con nhung dong giong het nhau khac moi vai giay
+   * — khong the chon dung phien minh muon. Chi ghi khi tua de con la mac dinh
+   * hoac con trong: nguoi dung doi ten roi thi khong duoc de len.
+   */
+  async datTuaDeTuPrompt(opencodeSessionId: string, prompt: string): Promise<void> {
+    const tuaDe = prompt.replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (tuaDe.length === 0) return;
+    await this.sql`
+      UPDATE opencode_sessions SET title = ${tuaDe}
+      WHERE opencode_session_id = ${opencodeSessionId}
+        AND (title IS NULL OR title = '' OR title LIKE 'New session -%')`;
+  }
+
   async chamMoc(opencodeSessionId: string): Promise<void> {
     await this.sql`
       UPDATE opencode_sessions SET last_used_at = NOW()
