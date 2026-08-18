@@ -1,0 +1,111 @@
+name: Build 3 image len GHCR
+
+# Ba image, ba co che tag khac nhau — chon theo TAN SUAT DOI cua tung cai. Day la
+# hop dong, khong phai tuy y:
+#
+#   gateway         ma nguon doi theo MOI commit -> tag = github.sha, deploy.yml
+#                   dung cung gia tri do nen hai phia tu khop, khong ghim tay
+#   opencode-server gan voi phien ban OpenCode   -> tag ghim, deploy doc vars.OPENCODE_TAG
+#   pg-tunnel       doi rat hiem                 -> tag ghim, deploy doc vars.TUNNEL_TAG
+#
+# KHONG dung github.run_number: no dem RIENG cho tung workflow, nen run_number
+# cua deploy.yml khong bao gio bang run_number cua workflow build. Hau qua te
+# nhat khong phai "tag khong ton tai" ma la "tag trung so tinh co" -> pull thanh
+# cong, deploy xanh, nhung trien khai dung mot build khac.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docker/**"
+      - "src/**"
+      - "scripts/sync-models.js"
+      - "scripts/verify-opencode-config.js"
+      - "package*.json"
+      - "tsconfig*.json"
+  workflow_dispatch:
+    inputs:
+      opencode_version:
+        description: "Phien ban opencode-ai de ghim (vd 0.5.12)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # KHONG dung `if: hashFiles(...)` o cap JOB: ham do khong ton tai trong
+      # ngu canh do va GitHub tu choi CA WORKFLOW voi HTTP 422 luc dispatch —
+      # loi chi lo ra khi that su chay, khong phai luc doc file.
+      # Nhanh Milestone 0 chua co src/, nen bo qua co kiem soat thay vi do.
+      - id: check
+        run: |
+          if [ -d src ] && [ -f package.json ]; then
+            echo "co_src=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "co_src=false" >> "$GITHUB_OUTPUT"
+            echo "Nhanh nay chua co src/ — bo qua build gateway" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - if: steps.check.outputs.co_src == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: steps.check.outputs.co_src == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.gateway
+          push: true
+          tags: ghcr.io/vanbienperu3107/opencode-telegram-gateway:${{ github.sha }}
+
+  opencode-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Phien ban opencode phai duoc ghim tuong minh
+        env:
+          V: ${{ github.event.inputs.opencode_version }}
+        run: |
+          test -n "$V" || { echo "::error::phai truyen opencode_version"; exit 1; }
+          echo "TAG=$V" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.opencode-server
+          push: true
+          build-args: OPENCODE_VERSION=${{ env.TAG }}
+          tags: ghcr.io/vanbienperu3107/opencode-server:${{ env.TAG }}
+      - name: Nhac dat repo variable
+        run: echo "Dat vars.OPENCODE_TAG = ${{ env.TAG }} truoc khi deploy" >> "$GITHUB_STEP_SUMMARY"
+
+  pg-tunnel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.pg-tunnel
+          push: true
+          tags: ghcr.io/vanbienperu3107/pg-tunnel:${{ github.sha }}
+      - name: Nhac dat repo variable
+        run: echo "Dat vars.TUNNEL_TAG = ${{ github.sha }} truoc khi deploy" >> "$GITHUB_STEP_SUMMARY"
