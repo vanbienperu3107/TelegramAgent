@@ -67,6 +67,24 @@ describe('lenh la khong bao gio bi im lang', () => {
     expect(doanLenh('/ab')).toBe('abort');
   });
 
+  it('KHONG BAO GIO goi y chinh cai vua go', () => {
+    // "Khong co lenh /dondep. Y ban la /dondep phai khong?" la mot cau vo nghia:
+    // nguoi dung go lai y het roi lai nhan y het. No xay ra khi ten lenh CO trong
+    // danh sach nhung khong co bot.command nao dang ky — da xay ra that voi
+    // /dondep ngay 2026-08-18.
+    for (const l of DANH_SACH_LENH) {
+      const van = renderLenhLa(`/${l.lenh}`);
+      const goiYChinhNo = new RegExp(`Y ban la /${l.lenh} phai khong`);
+      expect(van, `${l.lenh} tu goi y chinh no`).not.toMatch(goiYChinhNo);
+    }
+  });
+
+  it('noi ro day la loi he thong khi lenh co trong danh sach ma chua noi handler', () => {
+    // Nguoi dung khong go sai gi ca — dung noi lai la ho sai.
+    const van = renderLenhLa(`/${DANH_SACH_LENH[0]!.lenh}`);
+    expect(van).toMatch(/loi cua he thong|chua duoc noi vao bot/i);
+  });
+
   it('KHONG doan khi mo ho — goi y sai con kho chiu hon khong goi y', () => {
     // Nguoi dung se bam theo goi y roi lai khong duoc gi.
     expect(doanLenh('/xyz')).toBeNull();
