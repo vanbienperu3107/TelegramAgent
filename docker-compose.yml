@@ -50,7 +50,18 @@ services:
     volumes:
       - ./opencode.json:/home/node/.config/opencode/opencode.json:ro
       - ./workspace:/workspace
-    working_dir: /workspace
+    # Thu muc lam viec cua agent = DUNG thu muc project, khong phai thu muc cha.
+    #
+    # `POST /session` KHONG co truong thu muc (da doi chieu voi dac ta da tai ve:
+    # chi co parentID/title/agent/model/metadata/permission/workspaceID). Phien
+    # thua ke `working_dir` cua tien trinh server, nen day la cho DUY NHAT quyet
+    # dinh agent lam viec o dau.
+    #
+    # De `/workspace` thi agent nhin thay `opencode-sandbox/` nhu mot thu muc con
+    # va lam viec o tren no mot cap — luc do viec chon project chi la trang tri.
+    # Do cung la ly do V1 chi co MOT project: mo project thu hai can them mot
+    # container, khong phai chi INSERT mot dong.
+    working_dir: ${DEFAULT_PROJECT_PATH:?can dat DEFAULT_PROJECT_PATH}
     # KHONG co "ports:" — bat bien, tests/test_compose.py chan.
     # KHONG o db_net — agent khong duoc thay cong 5433 dan toi Postgres cua headscale.
     networks: [opencode_net, edge]

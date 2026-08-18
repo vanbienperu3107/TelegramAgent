@@ -158,3 +158,26 @@ def test_moi_env_file_co_khuon_trong_repo(services):
                 "%s dung %s nhung khong co %s.example trong repo"
                 % (name, env_file, env_file)
             )
+
+
+def test_agent_lam_viec_dung_trong_thu_muc_project():
+    """`working_dir` phai la thu muc PROJECT, khong phai thu muc cha.
+
+    `POST /session` khong co truong thu muc — da doi chieu voi dac ta da tai ve.
+    Phien thua ke `working_dir` cua tien trinh server, nen day la cho duy nhat
+    quyet dinh agent lam viec o dau.
+
+    De `/workspace` thi agent nhin thay `opencode-sandbox/` nhu mot thu muc con va
+    lam viec o TREN no mot cap. Khong co loi nao, khong co canh bao nao — chi la
+    viec chon project tro thanh trang tri, va nguoi dung khong hieu vi sao agent
+    khong thay file cua ho.
+    """
+    wd = compose()["services"]["opencode-server"]["working_dir"]
+    assert "DEFAULT_PROJECT_PATH" in wd, "working_dir phai lay tu DEFAULT_PROJECT_PATH"
+    assert wd != "/workspace", "thu muc cha thi viec chon project chi la trang tri"
+
+
+def test_working_dir_la_bien_bat_buoc():
+    """Thieu bien -> compose phai TU CHOI, khong duoc lang le dung mac dinh."""
+    wd = compose()["services"]["opencode-server"]["working_dir"]
+    assert ":?" in wd, "phai dung dang ${VAR:?...} de compose tu choi khi thieu"
