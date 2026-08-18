@@ -59,12 +59,21 @@ jobs:
             scripts/vpn4/probe-file-part.sh "$SSH_USER@$SSH_HOST_VPN4:/tmp/probe-file-part.sh"
           $SSH4 "bash /tmp/probe-file-part.sh" > probe-file-part.txt 2>&1 || true
 
+          # Vong bon: MCP co THUC SU chay khong, va co tool tim anh nao khong.
+          # Cau hinh chi la LOI KHAI BAO — MCP cuc bo phai `npx -y` tai goi tu
+          # Internet luc khoi dong, va neu hong thi OpenCode bo qua IM LANG.
+          scp -P "$SSH_PORT" -i k4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 \
+            scripts/vpn4/probe-mcp-tools.sh "$SSH_USER@$SSH_HOST_VPN4:/tmp/probe-mcp-tools.sh"
+          $SSH4 "bash /tmp/probe-mcp-tools.sh" > probe-mcp-tools.txt 2>&1 || true
+
           echo "=== be mat API ===" >> "$GITHUB_STEP_SUMMARY"
           head -c 3000 probe.txt >> "$GITHUB_STEP_SUMMARY"
           echo "=== luong su kien khi chay that ===" >> "$GITHUB_STEP_SUMMARY"
           tail -c 5000 probe-events.txt >> "$GITHUB_STEP_SUMMARY"
           echo "=== hinh anh: message co FilePart khong ===" >> "$GITHUB_STEP_SUMMARY"
           cat probe-file-part.txt >> "$GITHUB_STEP_SUMMARY"
+          echo "=== MCP co chay khong, co tool tim anh khong ===" >> "$GITHUB_STEP_SUMMARY"
+          cat probe-mcp-tools.txt >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -76,3 +85,4 @@ jobs:
             probe-events.txt
             opencode-events-live.jsonl
             probe-file-part.txt
+            probe-mcp-tools.txt
