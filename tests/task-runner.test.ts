@@ -33,7 +33,10 @@ function dungBo(ghiDe: {
   kho?: Partial<KhoTask>;
 } = {}) {
   const tg = {
-    guiTinNhan: vi.fn(async () => 100n),
+    // Khai tham so TUONG MINH: `vi.fn(async () => 100n)` lam TypeScript suy ra
+    // tuple rong cho `mock.calls`, va moi phep kiem doc `calls[i][1]` deu bao loi
+    // "tuple type [] has no element at index 1".
+    guiTinNhan: vi.fn(async (_chat: bigint, _van: string, _kb?: unknown) => 100n),
     suaTinNhan: vi.fn(
       async (_chat: bigint, _msg: bigint, _van: string, _banPhim?: unknown) => undefined,
     ),
