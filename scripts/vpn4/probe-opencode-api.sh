@@ -5,38 +5,66 @@
 # su kien that. Script nay tra loi tung cau hoi do bang cach hoi chinh server,
 # thay vi doan tu tai lieu.
 #
-# Chay trong container opencode-server (co curl tu ban vá healthcheck). Ghi ket
-# qua ra /tmp de workflow tai ve lam artifact.
+# XAC THUC: lan do dau tien tra 401 tren MOI duong dan, ke ca /doc va /global/health.
+# Mat khau nam san trong bien moi truong cua chinh container (env_file .env.opencode),
+# nen ta tham chieu $OPENCODE_SERVER_PASSWORD BEN TRONG container thay vi truyen qua
+# tham so `docker exec` — tham so hien trong `ps` cua host.
+#
+# LOC BI MAT: moi thu script in ra deu di thang vao artifact cua repo PUBLIC, nen
+# TOAN BO dau ra chay qua bo loc thay hai bi mat bang ***.
 set -uo pipefail   # KHONG dung -e: muc dich la thu tung endpoint, ke ca cai hong
 
-OC="docker exec opencode-server"
+ENVFILE=/opt/opencode/.env.opencode
 BASE="http://127.0.0.1:4096"
 
-hoi() {
-  local ten="$1" method="$2" duong_dan="$3" body="${4:-}"
-  echo "--- $ten: $method $duong_dan"
-  if [ -n "$body" ]; then
-    $OC curl -sS -o /tmp/r.json -w 'HTTP %{http_code}\n' --max-time 10 \
-      -X "$method" -H 'Content-Type: application/json' -d "$body" "$BASE$duong_dan"
-  else
-    $OC curl -sS -o /tmp/r.json -w 'HTTP %{http_code}\n' --max-time 10 \
-      -X "$method" "$BASE$duong_dan"
+# Doc bi mat CHI de lam bo loc — khong bao gio truyen chung vao lenh curl.
+doc_bien() { sed -n "s/^$1=//p" "$ENVFILE" 2>/dev/null | head -1; }
+PASS=$(doc_bien OPENCODE_SERVER_PASSWORD)
+APIKEY=$(doc_bien CLIPROXY_API_KEY)
+
+thoat_sed() { printf '%s' "$1" | sed 's/[|&\\]/\\&/g'; }
+BIEU="s/khong-doi-gi/khong-doi-gi/"
+if [ -n "$PASS" ];   then BIEU="$BIEU; s|$(thoat_sed "$PASS")|***MATKHAU***|g"; fi
+if [ -n "$APIKEY" ]; then BIEU="$BIEU; s|$(thoat_sed "$APIKEY")|***APIKEY***|g"; fi
+
+# Chay curl BEN TRONG container, tu doc mat khau tu env cua chinh no.
+oc() { docker exec opencode-server sh -c "$1"; }
+
+than() {
+  # Cach xac thuc chua biet — thu ca ba, giu cach nao ra 200.
+  local CACH="" c ma
+  for c in 'Authorization: Bearer $OPENCODE_SERVER_PASSWORD' \
+           'Authorization: Basic $(printf "opencode:%s" "$OPENCODE_SERVER_PASSWORD" | base64 -w0)' \
+           'x-opencode-password: $OPENCODE_SERVER_PASSWORD'; do
+    ma=$(oc "curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -H \"$c\" $BASE/global/health")
+    echo "thu \"${c%%:*}\" -> HTTP $ma"
+    if [ "$ma" = "200" ] && [ -z "$CACH" ]; then CACH="$c"; fi
+  done
+  if [ -z "$CACH" ]; then
+    echo "!! KHONG cach nao ra 200 — dung lai, khong doan tiep."
+    return 1
   fi
-  $OC head -c 600 /tmp/r.json
-  echo
-}
+  echo "==> cach xac thuc dung: ${CACH%%:*}"
+  local H="-H \"$CACH\""
 
-echo "########## 1. Endpoint co doi xac thuc khong ##########"
-hoi "health" GET /global/health
+  hoi() {
+    local ten="$1" method="$2" duong_dan="$3" body="${4:-}"
+    echo "--- $ten: $method $duong_dan"
+    if [ -n "$body" ]; then
+      oc "curl -sS -o /tmp/r.json -w 'HTTP %{http_code}\n' --max-time 20 $H -X $method -H 'Content-Type: application/json' -d '$body' $BASE$duong_dan; head -c 900 /tmp/r.json"
+    else
+      oc "curl -sS -o /tmp/r.json -w 'HTTP %{http_code}\n' --max-time 20 $H -X $method $BASE$duong_dan; head -c 900 /tmp/r.json"
+    fi
+    echo
+  }
 
-echo "########## 2. Dac ta OpenAPI ##########"
-$OC curl -sS --max-time 15 "$BASE/doc" > /tmp/opencode-openapi.json 2>/dev/null
-echo "kich thuoc /doc: $(stat -c %s /tmp/opencode-openapi.json 2>/dev/null || echo 0) byte"
-echo "--- danh sach duong dan trong OpenAPI ---"
-python3 -c "
-import json
+  echo "########## 1. Dac ta OpenAPI ##########"
+  oc "curl -sS --max-time 20 $H $BASE/doc > /tmp/opencode-openapi.json; wc -c < /tmp/opencode-openapi.json"
+  echo "--- danh sach duong dan trong OpenAPI ---"
+  oc "cat /tmp/opencode-openapi.json" | python3 -c "
+import json,sys
 try:
-    d = json.load(open('/tmp/opencode-openapi.json'))
+    d = json.load(sys.stdin)
 except Exception as e:
     print('khong doc duoc:', e); raise SystemExit
 for duong_dan, muc in sorted((d.get('paths') or {}).items()):
@@ -45,34 +73,37 @@ for duong_dan, muc in sorted((d.get('paths') or {}).items()):
             print('%-6s %s' % (m.upper(), duong_dan))
 " 2>&1
 
-echo "########## 3. Provider va model ##########"
-hoi "config" GET /config
-hoi "providers" GET /config/providers
+  echo "########## 2. Provider va model ##########"
+  hoi "config" GET /config
+  hoi "providers" GET /config/providers
 
-echo "########## 4. Agent — cau hoi con treo cua §13 ##########"
-hoi "agent" GET /agent
-hoi "config-agent" GET /config/agent
+  echo "########## 3. Agent — cau hoi con treo cua muc 13 ##########"
+  hoi "agent" GET /agent
 
-echo "########## 5. Session ##########"
-hoi "liet session" GET /session
-echo "--- tao mot session thu ---"
-$OC curl -sS -o /tmp/ses.json -w 'HTTP %{http_code}\n' --max-time 15 \
-  -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/session"
-$OC head -c 400 /tmp/ses.json
-echo
+  echo "########## 4. Session ##########"
+  hoi "liet session" GET /session
+  echo "--- tao mot session thu ---"
+  oc "curl -sS -o /tmp/ses.json -w 'HTTP %{http_code}\n' --max-time 20 $H -X POST -H 'Content-Type: application/json' -d '{}' $BASE/session; head -c 500 /tmp/ses.json"
+  echo
 
-echo "########## 6. Luong su kien — CO REPLAY KHONG ##########"
-# Chup 8 giay. Neu stream gui lai su kien cu khi noi lai thi se thay o day.
-$OC timeout 8 curl -sN --max-time 8 "$BASE/global/event" > /tmp/opencode-events.jsonl 2>/dev/null
-echo "so dong su kien bat duoc: $($OC wc -l < /tmp/opencode-events.jsonl 2>/dev/null || echo 0)"
-echo "--- 5 dong dau ---"
-$OC head -c 800 /tmp/opencode-events.jsonl
-echo
+  echo "########## 5. Luong su kien — CO REPLAY KHONG ##########"
+  # Chup 10 giay tren mot ket noi MOI. Neu server gui lai su kien cu khi noi lai
+  # thi se thay ngay o day; do la cau hoi quyet dinh cach viet Event Processor.
+  oc "timeout 10 curl -sN --max-time 10 $H $BASE/event > /tmp/ev1.jsonl 2>/dev/null; wc -l < /tmp/ev1.jsonl"
+  echo "--- dau file su kien ---"
+  oc "head -c 1200 /tmp/ev1.jsonl"
+  echo
+  echo "--- noi lai lan hai: co phat lai su kien cu khong ---"
+  oc "timeout 6 curl -sN --max-time 6 $H $BASE/event > /tmp/ev2.jsonl 2>/dev/null; wc -l < /tmp/ev2.jsonl; head -c 400 /tmp/ev2.jsonl"
+  echo
 
-echo "########## 7. Cac endpoint §17.1 khang dinh la co ##########"
-for p in /session /global/event /global/health /doc; do
-  echo -n "$p -> "
-  $OC curl -sS -o /dev/null -w '%{http_code}\n' --max-time 5 "$BASE$p"
-done
+  echo "########## xong ##########"
+}
 
-echo "########## xong ##########"
+than 2>&1 | sed "$BIEU"
+
+# Hai file de workflow tai ve. Cung phai loc — /doc va luong su kien deu co the
+# nhac lai cau hinh.
+docker exec opencode-server cat /tmp/opencode-openapi.json 2>/dev/null | sed "$BIEU" > /tmp/opencode-openapi.json
+docker exec opencode-server cat /tmp/ev1.jsonl 2>/dev/null | sed "$BIEU" > /tmp/opencode-events.jsonl
+exit 0
