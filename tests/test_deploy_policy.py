@@ -284,3 +284,52 @@ def test_khong_dung_run_number_cho_tag():
     khong ton tai" ma la "tag trung so tinh co" -> pull thanh cong, deploy xanh,
     nhung trien khai dung mot build khac."""
     assert "run_number" not in bo_comment_yaml(DEPLOY.read_text(encoding="utf-8"))
+
+
+def test_chu_thich_nhac_ten_bien_thi_khong_bi_bao_nham(repo):
+    """Lop loi 'tu to giac': chu thich MO TA mau bi cam nen chua luon mau do.
+
+    Da xay ra that: mot chu thich giai thich vi sao khong nen viet $VAR trong
+    `sh -c` da lam CI do, du dong do la chu thich. Dau $ trong chu thich khong bao
+    gio duoc khai trien."""
+    script = chr(10).join([
+        "exec 9>/var/lock/vpn4-deploy",
+        "flock -w 600 9 || exit 1",
+        "cd /opt/opencode",
+        "# giai thich: khong duoc doc $KHONG_HE_CO_NGUON o day",
+        "  # thut le van la chu thich",
+        'echo "$FOO"',
+    ])
+    write_deploy(repo, [ssh_step(script=script, envs="FOO")])
+    proc = run_checker(repo)
+    assert "KHONG_HE_CO_NGUON" not in proc.stdout + proc.stderr
+
+
+def test_van_bat_bien_khong_nguon_o_dong_lenh_that(repo):
+    """Bo chu thich khong duoc lam thung chot chan: dong lenh that van phai bi bat."""
+    script = chr(10).join([
+        "exec 9>/var/lock/vpn4-deploy",
+        "flock -w 600 9 || exit 1",
+        "cd /opt/opencode",
+        "# $CHI_LA_CHU_THICH",
+        'echo "$THAT_SU_DOC"',
+    ])
+    write_deploy(repo, [ssh_step(script=script, envs="FOO")])
+    proc = run_checker(repo)
+    assert proc.returncode != 0
+    assert "THAT_SU_DOC" in proc.stdout + proc.stderr
+
+
+def test_dau_thang_trong_khai_trien_khong_bi_cat_nham(repo):
+    """`${VAR#tien_to}` co dau # nhung khong phai chu thich. Neu bo kiem cat tu dau
+    # den het dong thi tham chieu that bien mat va chot chan im lang."""
+    script = chr(10).join([
+        "exec 9>/var/lock/vpn4-deploy",
+        "flock -w 600 9 || exit 1",
+        "cd /opt/opencode",
+        'echo "${KHONG_CO_NGUON#tien_to}"',
+    ])
+    write_deploy(repo, [ssh_step(script=script, envs="FOO")])
+    proc = run_checker(repo)
+    assert proc.returncode != 0
+    assert "KHONG_CO_NGUON" in proc.stdout + proc.stderr
