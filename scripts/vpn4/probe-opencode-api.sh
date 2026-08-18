@@ -32,19 +32,27 @@ oc() { docker exec opencode-server sh -c "$1"; }
 
 than() {
   # Cach xac thuc chua biet — thu ca ba, giu cach nao ra 200.
-  local CACH="" c ma
-  for c in 'Authorization: Bearer $OPENCODE_SERVER_PASSWORD' \
-           'Authorization: Basic $(printf "opencode:%s" "$OPENCODE_SERVER_PASSWORD" | base64 -w0)' \
-           'x-opencode-password: $OPENCODE_SERVER_PASSWORD'; do
+  #
+  # NHAN phai la ten cach, khong phai ten tieu de. Ban dau cho nay in
+  # "${c%%:*}", tuc phan truoc dau hai cham — nen ca Bearer lan Basic deu hien
+  # thanh dong "Authorization" giong het nhau, va nguoi doc log ket luan nham la
+  # Bearer chay duoc. Mot ban ghi khong phan biet duoc hai ket qua khac nhau thi
+  # te hon la khong ghi gi.
+  local CACH="" muc ten ma c TEN_CACH=""
+  for muc in 'bearer|Authorization: Bearer $OPENCODE_SERVER_PASSWORD' \
+             'basic|Authorization: Basic $(printf "opencode:%s" "$OPENCODE_SERVER_PASSWORD" | base64 -w0)' \
+             'tieu-de-rieng|x-opencode-password: $OPENCODE_SERVER_PASSWORD'; do
+    ten=${muc%%|*}
+    c=${muc#*|}
     ma=$(oc "curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -H \"$c\" $BASE/global/health")
-    echo "thu \"${c%%:*}\" -> HTTP $ma"
-    if [ "$ma" = "200" ] && [ -z "$CACH" ]; then CACH="$c"; fi
+    echo "thu cach '$ten' -> HTTP $ma"
+    if [ "$ma" = "200" ] && [ -z "$CACH" ]; then CACH="$c"; TEN_CACH="$ten"; fi
   done
   if [ -z "$CACH" ]; then
     echo "!! KHONG cach nao ra 200 — dung lai, khong doan tiep."
     return 1
   fi
-  echo "==> cach xac thuc dung: ${CACH%%:*}"
+  echo "==> CACH XAC THUC DUNG: $TEN_CACH"
   local H="-H \"$CACH\""
 
   hoi() {
