@@ -185,12 +185,13 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
           script_stop: true
-          envs: GITHUB_RUN_ID,OPENCODE_TAG,CLIPROXY_API_KEY
+          envs: GITHUB_RUN_ID,GATEWAY_TAG,OPENCODE_TAG,TUNNEL_TAG,PG_REMOTE_HOST,CLIPROXY_API_KEY
           script: |
             exec 9>/var/lock/vpn4-deploy
             flock -w 600 9 || exit 1
             cd /opt/opencode
             HEALTH_PORT=$(python3 scripts/readenv.py .env HEALTH_PORT)
+            export HEALTH_PORT
             OPENCODE_PG_PASSWORD=$(python3 scripts/readenv.py .env OPENCODE_PG_PASSWORD)
             CLIPROXY_BASE_URL=$(python3 scripts/readenv.py .env CLIPROXY_BASE_URL)
             export CLIPROXY_BASE_URL
@@ -212,7 +213,10 @@ jobs:
             diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/after-$GITHUB_RUN_ID.txt
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
+          GATEWAY_TAG: ${{ github.sha }}
           OPENCODE_TAG: ${{ vars.OPENCODE_TAG }}
+          TUNNEL_TAG: ${{ vars.TUNNEL_TAG }}
+          PG_REMOTE_HOST: ${{ steps.vpn6.outputs.PG_REMOTE_HOST }}
           CLIPROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}
 
       # ─── Buoc 5b: anh chup SAU cua vpn6 ────────────────────────────────────
