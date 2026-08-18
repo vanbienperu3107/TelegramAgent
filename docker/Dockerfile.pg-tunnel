@@ -1,0 +1,21 @@
+# Tunnel SSH tu vpn4 sang derp-postgres tren vpn6. mem_limit 64m.
+#
+# Vi sao SSH ma khong phai tailnet: do duoc 307 ms on dinh (+-0.1) tren duong
+# cong cong, so voi 312-627 ms jitter qua tailnet vi phai qua DERP. Duong cong
+# cong vua nhanh hon vua it phu thuoc hon.
+
+FROM alpine:3.20
+
+# autossh — dung lai tunnel khi dut
+# openssh-client — chinh no
+# netcat-openbsd — healthcheck `nc -z 127.0.0.1 5433`
+# postgresql-client — buoc verify cua deploy chay `psql` TRONG container nay, vi
+#   image gateway khong co psql va host vpn4 cung khong co
+RUN apk add --no-cache autossh openssh-client netcat-openbsd postgresql-client
+
+# Khong tao user rieng: container nay khong chay ma cua ai khac, va autossh can
+# doc /keys (mount :ro). Bu lai bang mem_limit + pids_limit + cap_drop trong compose.
+
+# Lenh that nam trong docker-compose.yml (ban dinh nghia duy nhat) — o day chi de
+# image chay duoc doc lap khi can go loi.
+CMD ["autossh", "-V"]

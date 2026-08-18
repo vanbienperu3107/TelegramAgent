@@ -1,0 +1,142 @@
+name: CI
+
+# Trigger khai TUONG MINH. Repo nay PUBLIC va giu SSH_KEY = root tren may chay
+# DERP relay cua ca fleet, nen:
+#   - KHONG dung pull_request_target (chay workflow cua nhanh dich VOI SECRET
+#     day du tren ma cua PR den tu fork — mot PR "them test" lot review la du);
+#   - job nay KHONG dung secret nao, nen `pull_request` la an toan.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  invariants:
+    name: Bat bien compose + hop dong env
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cai phu thuoc test
+        run: pip install pytest pyyaml
+
+      - name: Chay test
+        run: pytest tests/ -v
+
+      - name: Luat L1-L5 cua deploy.yml
+        run: python3 scripts/check-deploy-policy.py
+
+      - name: Lint cu phap 3 script vpn6
+        run: bash -n scripts/vpn6/create-opencode-db.sh scripts/vpn6/update-permitopen.sh scripts/vpn6/snapshot-vpn6.sh
+
+      - name: Kiem cu phap JavaScript
+        run: |
+          node --check scripts/sync-models.cjs
+          node --check scripts/verify-opencode-config.cjs
+
+      - name: opencode.json.template phai la JSON hop le
+        run: python3 -m json.tool opencode.json.template > /dev/null
+
+  gateway:
+    name: Gateway (typecheck + build + unit test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      # dist/ phai co CA HAI: buoc 4 cua deploy chay dist/migrate.js bang
+      # `--entrypoint node`. Build chi sinh index.js la deploy do o buoc migration.
+      - name: dist phai co ca index.js lan migrate.js
+        run: |
+          test -f dist/index.js
+          test -f dist/db/migrate.js
+      - run: npm test
+
+      # Sinh env bang chinh gen-env.py cua deploy. Buoc nay dong thoi chung minh
+      # duong sinh file chay duoc that: `docker compose config` KIEM SU TON TAI
+      # cua moi env_file, nen mot file duoc khai ma khong ai sinh se lam CI do
+      # ngay — dung lop loi ma bon vong review doi khang moi bat duoc.
+      - name: Sinh file env gia lap
+        env:
+          TELEGRAM_BOT_TOKEN: gia-lap
+          TELEGRAM_ALLOWED_USER_IDS: "1"
+          TELEGRAM_ADMIN_USER_IDS: "1"
+          OPENCODE_PG_PASSWORD: gia-lap
+          OPENCODE_SERVER_PASSWORD: gia-lap
+          CLIPROXY_API_KEY: gia-lap
+        run: python3 scripts/gen-env.py
+
+      - name: Compose phai parse duoc voi bien that
+        env:
+          GATEWAY_TAG: sha-gia-lap
+          OPENCODE_TAG: v0.0.0-gia-lap
+          TUNNEL_TAG: v0.0.0-gia-lap
+          PG_REMOTE_HOST: 172.21.0.2
+          HEALTH_PORT: "8790"
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Compose phai DUNG khi thieu bien bat buoc
+        run: |
+          if docker compose -f docker-compose.yml config --quiet 2>/dev/null; then
+            echo "::error::compose parse duoc du thieu bien bat buoc — mat fail-fast"
+            exit 1
+          fi
+          echo "OK: thieu bien thi compose dung, dung nhu thiet ke"
+
+  secrets-scan:
+    name: Quet bi mat
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Khong duoc co bi mat trong repo PUBLIC
+        run: |
+          PAT='sk-cliproxy-[a-z0-9]{10,}|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}|ghp_[A-Za-z0-9]{20,}|BEGIN [A-Z ]*PRIVATE KEY'
+          if grep -rInE "$PAT" --exclude-dir=.git .; then
+            echo "::error::tim thay bi mat trong repo"
+            exit 1
+          fi
+          echo "OK: khong tim thay bi mat"
+
+      - name: File env that khong duoc commit
+        run: |
+          if git ls-files --error-unmatch .env .env.opencode 2>/dev/null; then
+            echo "::error::.env hoac .env.opencode bi commit"
+            exit 1
+          fi
+          echo "OK: chi co file .example"
+
+  workflow-policy:
+    name: Luat trigger workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyyaml
+
+      # Kiem bang cach PHAN TICH khoi `on:` cua tung workflow, khong dung grep.
+      # Ban dau cho nay la mot lenh grep va CI do ngay lan chay dau: chinh dong
+      # comment giai thich luat cung chua chuoi "pull_request_target", nen no tu
+      # to cao minh. grep khong phan biet duoc cau hinh voi van ban noi ve cau hinh.
+      - name: Luat trigger (cam pull_request_target, cam secret voi pull_request)
+        run: python3 scripts/check-workflow-policy.py

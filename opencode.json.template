@@ -1,0 +1,51 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "//": "KHUON. sync-models.js chen khoi provider.cliproxy.models roi ghi ra opencode.json.",
+  "//permission": "13 khoa, khong thieu khong thua. Khoa khong dat se chay theo mac dinh cua OpenCode — do la lo hong im lang: mot tool nang co the chay ma khong hien nut Approve nao. verify-opencode-config.js kiem du 13 khoa va kiem bang bash khop chinh xac.",
+  "//lsp": "V1 tat LSP: ngan sach 512 MB cua opencode-server khong cong noi 150-400 MB cua typescript-language-server. permission.lsp la quyen cua TOOL, khoi lsp duoi day moi la cong tac tat SERVER — hai thu khac nhau.",
+
+  "provider": {
+    "cliproxy": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "CLIProxy (vpn4)",
+      "options": {
+        "baseURL": "{env:CLIPROXY_BASE_URL}",
+        "apiKey": "{env:CLIPROXY_API_KEY}"
+      },
+      "models": {}
+    }
+  },
+
+  "permission": {
+    "read": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "lsp": "deny",
+    "edit": "allow",
+    "question": "allow",
+    "task": "ask",
+    "skill": "ask",
+    "webfetch": "ask",
+    "websearch": "ask",
+    "external_directory": "ask",
+    "doom_loop": "deny",
+    "bash": {
+      "*": "ask",
+      "git status": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "rm *": "deny",
+      "sudo *": "deny",
+      "systemctl *": "deny",
+      "docker *": "deny",
+      "kubectl *": "deny",
+      "git push*": "deny",
+      "git reset --hard*": "deny"
+    }
+  },
+
+  "lsp": {
+    "typescript": { "disabled": true }
+  }
+}

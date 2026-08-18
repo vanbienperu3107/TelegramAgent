@@ -1,0 +1,101 @@
+# Stack OpenCode Telegram Remote Gateway — chay tren vpn4 tai /opt/opencode
+#
+# BAN DINH NGHIA DUY NHAT. Telegram.md §37 mo ta y dinh; file nay la su that.
+# Moi bat bien duoi day co mot phep kiem tuong ung trong tests/test_compose.py.
+#
+# Rang buoc cua may: vpn4 co 1968 MB RAM va dang chay derper (DERP relay cua ca
+# fleet). Vi vay MOI service phai co mem_limit + oom_score_adj + logging.
+
+services:
+  telegram-gateway:
+    image: ghcr.io/vanbienperu3107/opencode-telegram-gateway:${GATEWAY_TAG:?can dat GATEWAY_TAG}
+    container_name: opencode-gateway
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 512m
+    oom_score_adj: 600
+    pids_limit: 256
+    env_file: .env
+    depends_on:
+      pg-tunnel:
+        condition: service_started
+      opencode-server:
+        condition: service_healthy
+    networks: [opencode_net, db_net]
+    # KHONG publish cong: bot chu dong goi ra Telegram bang long polling.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:${HEALTH_PORT:?can dat HEALTH_PORT}/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  opencode-server:
+    image: ghcr.io/vanbienperu3107/opencode-server:${OPENCODE_TAG:?can dat OPENCODE_TAG}
+    container_name: opencode-server
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 1g
+    oom_score_adj: 800
+    pids_limit: 512
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    # HAI FILE ENV RIENG. Dung chung .env se do ca TELEGRAM_BOT_TOKEN va mat khau
+    # DB vao container ma agent co quyen `read` — no doc /proc/self/environ la co
+    # token bot. .env.opencode chi chua DUNG 2 bien.
+    env_file: .env.opencode
+    volumes:
+      - ./opencode.json:/home/node/.config/opencode/opencode.json:ro
+      - ./workspace:/workspace
+    working_dir: /workspace
+    # KHONG co "ports:" — bat bien, tests/test_compose.py chan.
+    # KHONG o db_net — agent khong duoc thay cong 5433 dan toi Postgres cua headscale.
+    networks: [opencode_net, edge]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:4096/global/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  pg-tunnel:
+    image: ghcr.io/vanbienperu3107/pg-tunnel:${TUNNEL_TAG:?can dat TUNNEL_TAG}
+    container_name: opencode-pg-tunnel
+    restart: unless-stopped
+    mem_limit: 64m
+    memswap_limit: 128m
+    oom_score_adj: 400
+    pids_limit: 64
+    command: >
+      autossh -M 0 -N
+      -o ServerAliveInterval=15 -o ServerAliveCountMax=3
+      -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=yes
+      -o UserKnownHostsFile=/keys/known_hosts
+      -i /keys/pg_tunnel_key
+      -L 0.0.0.0:5433:${PG_REMOTE_HOST:?can dat PG_REMOTE_HOST}:5432
+      pgtunnel@45.119.87.220
+    volumes:
+      - ./keys:/keys:ro
+    networks: [db_net]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "5433"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  opencode_net:
+    driver: bridge
+  db_net:
+    driver: bridge
+  edge:
+    external: true
