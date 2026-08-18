@@ -189,8 +189,19 @@ export class OpenCodeClient {
     modelID?: string;
     agent?: string;
     messageID?: string;
+    /**
+     * Tep dinh kem, dung `FilePartInput` cua dac ta. Dat SAU phan van ban.
+     *
+     * Thu tu co y: model doc `parts` theo thu tu, va cau hoi dung truoc thi no
+     * biet phai lam gi voi tep. Dao lai thi tep den truoc mot cau hoi chua ton
+     * tai.
+     */
+    dinhKem?: Array<{ type: 'file'; mime: string; url: string; filename?: string }>;
   }): Promise<string> {
     const messageID = doiSo.messageID ?? sinhMessageId();
+    const parts: Array<Record<string, unknown>> = [{ type: 'text', text: doiSo.van }];
+    for (const t of doiSo.dinhKem ?? []) parts.push(t as unknown as Record<string, unknown>);
+
     await this.goi(`/session/${doiSo.sessionID}/prompt_async`, {
       ...this.thanJson({
         messageID,
@@ -200,9 +211,11 @@ export class OpenCodeClient {
         },
         agent: doiSo.agent ?? this.cfg.DEFAULT_AGENT,
         // `parts` la truong bat buoc DUY NHAT theo dac ta da tai ve.
-        parts: [{ type: 'text', text: doiSo.van }],
+        parts,
       }),
-      timeoutMs: 30_000,
+      // Dinh kem base64 lam than yeu cau to len ~33%; 30 giay khong du cho mot
+      // tep vai MB di qua Thai Binh Duong.
+      timeoutMs: (doiSo.dinhKem?.length ?? 0) > 0 ? 90_000 : 30_000,
     });
     return messageID;
   }
