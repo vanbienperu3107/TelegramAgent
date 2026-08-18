@@ -358,27 +358,56 @@ async function main() {
     }
     if (!(await doiDb(ctx))) return;
 
-    const state = cache.get(ctx.auth.userId);
+    let state = cache.get(ctx.auth.userId);
     if (state.currentSessionId === null) {
       await ctx.reply('💬 Chua co phien lam viec. Dung /project roi /new de bat dau.');
       return;
     }
 
-    const kq = await chay.batDau({
-      telegramUserId: ctx.auth.userId,
-      telegramChatId: BigInt(ctx.chat.id),
-      sessionID: state.currentSessionId,
-      van: ctx.message.text,
-      providerID: state.currentProviderId,
-      modelID: state.currentModelId,
-      agent: state.currentAgent,
-    });
+    const giaoViec = async (sessionID: string) =>
+      chay.batDau({
+        telegramUserId: ctx.auth.userId,
+        telegramChatId: BigInt(ctx.chat.id),
+        sessionID,
+        van: ctx.message.text,
+        providerID: state.currentProviderId,
+        modelID: state.currentModelId,
+        agent: state.currentAgent,
+      });
+
+    let phien = state.currentSessionId;
+    let kq = await giaoViec(phien);
+
+    /**
+     * Phien chet ben OpenCode: tao phien moi va thu LAI, dung mot lan.
+     *
+     * Xay ra that khi opencode-server khoi dong lai. Bat nguoi dung tu go /new
+     * roi go lai cau hoi la day viec cua may sang cho ho — ho khong lam gi sai va
+     * cung khong the doan duoc chuyen gi vua xay ra.
+     *
+     * Chi thu lai MOT lan: neu phien vua tao cung 404 thi van de nam o cho khac,
+     * va thu vong lai chi doi mot loi ro thanh mot vong lap.
+     */
+    if (!kq.ok && kq.lyDo === 'phien-da-chet') {
+      await khoPhien.luuTru(phien, ctx.auth.userId).catch(() => undefined);
+      const moi = await khoPhien.taoPhien({
+        telegramUserId: ctx.auth.userId,
+        projectId: state.currentProjectId,
+        providerId: state.currentProviderId,
+        modelId: state.currentModelId,
+        agent: state.currentAgent,
+      });
+      state = await cache.set(ctx.auth.userId, { currentSessionId: moi.opencodeSessionId });
+      phien = moi.opencodeSessionId;
+      kq = await giaoViec(phien);
+    }
+
     if (!kq.ok) return; // bo chay task da sua chinh tin nhan trang thai de bao
 
     // Dat tua de phien theo cau hoi dau tien. KHONG `await` tren duong di: day la
     // viec lam dep danh sach, khong duoc lam cham cau tra loi them mot vong 307 ms.
     void khoPhien
-      .datTuaDeTuPrompt(state.currentSessionId, ctx.message.text)
+      .datTuaDeTuPrompt(phien, ctx.message.text)
       .catch((e) => log.warn({ err: e }, 'khong dat duoc tua de phien'));
   });
 

@@ -12,6 +12,7 @@ import type { Config } from '../config.js';
 import type { SuKien } from './event-stream.js';
 import { BoGopTienDo, CongTacSua, veTienDo } from './progress.js';
 import type { OpenCodeClient } from './opencode-client.js';
+import { LoiOpenCode } from './opencode-client.js';
 import { DaCoTaskDangChay, KhoTask, type Task } from './tasks.js';
 
 /** Phan Telegram ma bo chay can — thu hep lai de test khong phai dung bot that. */
@@ -66,7 +67,7 @@ export class BoChayTask {
     providerID?: string | null;
     modelID?: string | null;
     agent?: string | null;
-  }): Promise<{ ok: true; task: Task } | { ok: false; lyDo: 'da-co-task' }> {
+  }): Promise<{ ok: true; task: Task } | { ok: false; lyDo: 'da-co-task' | 'phien-da-chet' }> {
     // Sinh truoc de ghi so va gui prompt dung mot id.
     const messageID = `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 
@@ -136,6 +137,18 @@ export class BoChayTask {
       // khoi moi cau hoi tiep theo boi mot task chua bao gio bat dau.
       this.theoPhien.delete(doiSo.sessionID);
       await this.khoTask.ketThuc(task.id, 'failed', null, (e as Error).message);
+
+      // 404 = phien khong con ben OpenCode. Day KHONG phai loi bat thuong ma la
+      // mot trang thai binh thuong: OpenCode co the da khoi dong lai, hoac phien
+      // bi don. Nem mot chuoi JSON tho vao mat nguoi dung thi ho khong biet phai
+      // lam gi — ben goi tu nhan dien va tao phien moi.
+      if (e instanceof LoiOpenCode && e.status === 404) {
+        await this.tg
+          .suaTinNhan(doiSo.telegramChatId, idTin, '🔄 Phien cu khong con ton tai. Dang tao phien moi...')
+          .catch(() => undefined);
+        return { ok: false, lyDo: 'phien-da-chet' };
+      }
+
       await this.tg.suaTinNhan(
         doiSo.telegramChatId,
         idTin,
