@@ -2047,65 +2047,97 @@ Never write Telegram attachments outside the selected project/temp sandbox.
 
 # 17. OpenCode Async Prompt
 
-## 17.1 Bề mặt API thật (đối chiếu tài liệu OpenCode 2026-08-13)
+## 17.1 Bề mặt API — **đã đo trên server đang chạy** (2026-08-18, OpenCode 1.18.18)
 
-| Việc | Method | Đường dẫn |
-|---|---|---|
-| Kiểm tra sống | `GET` | `/global/health` |
-| Tạo session | `POST` | `/session` |
-| Gửi prompt đồng bộ | `POST` | `/session/:id/message` |
-| **Gửi prompt bất đồng bộ** | `POST` | `/session/:id/prompt_async` |
-| **Luồng sự kiện SSE** | `GET` | `/global/event` |
-| Huỷ task | `POST` | `/session/:id/abort` |
-| Trả lời xin quyền | `POST` | `/session/:id/permissions/:permissionID` |
-| Đặc tả OpenAPI 3.1 | `GET` | `/doc` |
+> Mục này từng là bảng suy đoán kèm một mục §17.2 gồm tám dấu hỏi. Nay nó là bản tóm tắt
+> của một phép đo thật. Bằng chứng đầy đủ: **`docs/opencode-api-do-duoc.md`**,
+> **`docs/opencode-openapi.json`** (162 đường dẫn) và **`docs/opencode-events-sample.jsonl`**
+> (111 sự kiện của một lượt hỏi-đáp có dùng tool và có duyệt quyền).
+> Đo bằng `.github/workflows/probe-opencode-api.yml` — chạy trên runner nên tái lập được.
+> **Khi mục này lệch với ba file kia, ba file kia đúng.**
 
-Hai chỗ spec gốc ghi sai, **phải dùng bản trên**: SSE là `/global/event` (không phải `/event`),
-và health là `/global/health`.
-
-Máy chủ chạy bằng `opencode serve --port 4096 --hostname 0.0.0.0` **bên trong container**
-(0.0.0.0 ở đây là trong không gian mạng riêng của container, không publish ra host — §34), bảo
-vệ bằng basic auth qua biến `OPENCODE_SERVER_PASSWORD`.
-
-**Câu hỏi phải trả lời trong Milestone 0:** basic auth có phủ luôn `/global/health` không?
-Đây không phải chi tiết vụn — nếu có phủ thì healthcheck của compose gọi không kèm credential sẽ
-luôn 401 và container không bao giờ `healthy`. Kiểm bằng `curl -i` hai lần (có và không có
-credential), ghi kết quả vào chính mục này. Mặc định an toàn cho tới khi biết chắc: healthcheck
-**kiểm TCP** cổng 4096 thay vì gọi HTTP. **Lệnh cụ thể chỉ nằm ở §37** (bản định nghĩa duy nhất)
-— đừng chép lệnh vào đây, vì hai bản sẽ lệch nhau ngay lần sửa sau.
-
-## 17.2 Tám nhóm endpoint CHƯA đối chiếu — phải chốt trong Milestone 0
-
-Bảng §17.1 mới phủ 8 endpoint. Tám hạng mục V1 bắt buộc dưới đây **chưa có endpoint nào được
-xác nhận**, và không được code chúng dựa trên phỏng đoán:
-
-**Mỗi dòng đều có nhánh dự phòng viết sẵn** — giống cách §36.2 xử lý rủi ro musl. Không dòng nào
-được để trống cột cuối, vì "thiết kế lại giữa chừng" là thứ đắt nhất:
-
-| Tính năng V1 | Mục | Endpoint | Nếu KHÔNG có endpoint |
+| Việc | Method | Đường dẫn | Đã đo |
 |---|---|---|---|
-| Danh sách provider + model | §12, AC-05 | ? | Đọc `opencode.json` đã mount (nhánh A+ của §33.3) — vẫn thoả AC-05 vì file đó do bước đồng bộ sinh, không phải hard-code |
-| Danh sách agent | §13 | ? | Ba phương án, theo thứ tự ưu tiên: (1) endpoint liệt agent nếu `GET /doc` có — chốt ở Milestone 0; (2) mount `~/.config/opencode/agent/` `:ro` rồi liệt file; (3) khai agent thành **hằng số cấu hình** trong `opencode.json.template` — `sync-models.js` chỉ chép qua, không sinh từ đâu cả. Phương án 3 là **ngoại lệ có phạm vi** của §52 quy tắc 4 ("không hard-code agent"): cấm hard-code trong **mã nguồn Gateway**, còn file cấu hình do vận hành sửa được mà không cần build lại thì chấp nhận. Ghi rõ ngoại lệ này vào §52 nếu chọn (3) |
-| **Gắn session vào thư mục project** | §10, §33, AC-03 | ? | Đây là dòng dễ bị quên nhất mà lại đỡ cả "chọn project": `POST /session` trong §17.1 không có tham số thư mục nào. Nếu API không hỗ trợ → V1 chạy **một OpenCode server cho một project** và đặt `working_dir` = đúng project path; ghi rõ hệ quả: mở project thứ hai cần thêm một container, không còn là "chỉ INSERT một dòng" |
-| **Hình dạng payload của `/global/event`** | §18–20, §26, AC-09/10/12/16 | ? | Không có nhánh dự phòng — bốn AC đều đứng trên nó. Bắt buộc **chụp luồng sự kiện thật** ở Milestone 0: `curl -N /global/event > docs/opencode-events-sample.jsonl` trong lúc chạy một prompt có sửa file và có xin quyền, rồi liệt kê các `type` quan sát được và ánh xạ sang §18/§19/§26. **Không viết Event Processor trước khi có file mẫu này** |
-| **`/global/event` có replay/resume không** (`Last-Event-ID`?) | §42, AC-10 | ? | Câu hỏi chặn ngang hàng với dòng trên. Bản chụp mẫu phải bao gồm **một lần đứt và nối lại kết nối**. Nếu KHÔNG có replay: mọi sự kiện phát ra trong lúc đứt đều mất — mà SSE đứt là chuyện thường (mỗi deploy đều `--force-recreate opencode-server`, và `restart: unless-stopped` nối lại sau mỗi OOM) |
-| **Liệt kê permission đang chờ của một session** | §26, §42, AC-10 | ? | §17.1 chỉ có `POST …/permissions/:id` để **trả lời**, không có gì để **hỏi lại**. Không có endpoint này thì một sự kiện permission mất lúc reconnect là mất vĩnh viễn: agent chờ mãi, task đứng ở `running` (chưa kịp sang `waiting_permission` nên `APPROVAL_TIMEOUT_MIN` không chạy), khoá 1-task giữ đủ `TASK_MAX_DURATION_MIN`. **Nhánh dự phòng bắt buộc:** sau mỗi lần reconnect, task nào ở `running` quá 60 giây mà không nhận được sự kiện nào → `POST /session/:id/abort` + báo Telegram "mất dấu task, đã huỷ". Thà huỷ tường minh còn hơn treo 30 phút |
-| Liệt kê session | §11 | ? | Dùng bảng `opencode_sessions` của ta làm nguồn (đã lưu mọi session do bot tạo) — mất session tạo ngoài bot, chấp nhận ở V1 |
-| Trạng thái session (hoà giải) | §7.10, AC-17 | ? | **Quyết định ngay lúc khởi động, không chờ ngưỡng nào**: task nào SSE không tái nhận trong 15 giây → `POST /session/:id/abort` (endpoint đã xác nhận, §17.1) → đánh dấu `aborted`, sửa `telegram_status_message_id`, **nhả khoá 1-task**. Ngưỡng 10 phút chỉ dùng cho task đang chạy mà im lặng, tuyệt đối không dùng lúc khởi động — §7.10 giải thích vì sao (hai task song song) |
-| Diff của session | §25, AC-15 | ? | `git diff` trong workspace → **kéo theo nhánh B của §33.3** (Gateway phải mount `:ro`). Ghi rõ ràng buộc kèm nhau này |
-| **Lấy nội dung artifact** | §23, AC-12/13 | ? | Nhánh B của §33.3: mount `./workspace:/workspace:ro` cho Gateway, `§23` được `readFile` trong phạm vi `WORKSPACE_ROOT` |
+| Kiểm tra sống | `GET` | `/global/health` | 200 (có xác thực) |
+| Đặc tả OpenAPI | `GET` | `/doc` | 200, 478 KB |
+| Tạo session | `POST` | `/session` | 200, trả `{id:"ses_…"}` |
+| Liệt session | `GET` | `/session` | 200 |
+| **Gửi prompt bất đồng bộ** | `POST` | `/session/:id/prompt_async` | **204, không có thân** |
+| **Luồng sự kiện SSE** | `GET` | `/event` | 200, `data: {…}` |
+| Đọc message | `GET` | `/session/:id/message` | 200 |
+| Diff của session | `GET` | `/session/:id/diff` | 200, mảng |
+| Huỷ task | `POST` | `/session/:id/abort` | có trong đặc tả |
+| **Liệt permission đang chờ** | `GET` | `/permission` | 200 |
+| Trả lời xin quyền | `POST` | `/session/:id/permissions/:permissionID` | 200 |
+| Provider + model | `GET` | `/config/providers` | 200 |
+| Cấu hình đang hiệu lực | `GET` | `/config` | 200 |
+| **Danh sách agent** | `GET` | `/agent` | 200, kèm ma trận quyền |
 
-Việc đầu tiên: gọi `GET /doc`, lưu `docs/opencode-openapi.json`, điền đủ 8 dòng trên và ghi
-ngày kiểm chứng.
+**Xác thực là HTTP Basic**, `base64("opencode:$OPENCODE_SERVER_PASSWORD")` — **không phải
+Bearer**. Đã thử cả ba cách; Bearer và tiêu đề riêng đều 401.
 
-**Hai dòng cuối buộc nhau:** cả diff lẫn artifact đều rơi về nhánh B, nên nếu một trong hai
-thiếu endpoint thì §33.3 chuyển nhánh B và §37 phải thêm `- ./workspace:/workspace:ro` cho
-`telegram-gateway`. Quyết định này chốt ở **Milestone 0**, trước khi viết code Telegram.
+**Basic auth phủ luôn `/global/health` và `/doc`.** Câu hỏi chặn của Milestone 0 đã có
+đáp án, và đáp án là "có". Healthcheck của compose vì thế dùng `curl -sS` **không kèm
+`-f`**: nó hỏi "server có đang lắng nghe và trả lời không", chứ không hỏi "xác thực có
+đúng không" — 401 vẫn là dấu hiệu sống. Tính đúng đắn của xác thực có phép thử riêng ở
+bước 5 của deploy (một lời gọi model thật). **Lệnh cụ thể chỉ nằm ở §37.**
 
-**Việc đầu tiên của Milestone 0:** gọi `GET /doc`, lưu bản OpenAPI vào `docs/opencode-openapi.json`
-và sinh kiểu TypeScript từ đó. Đó là nguồn chân lý, không phải mục này — nếu lệch thì sửa mục này.
-Bảng §17.2 phải được điền đủ trong cùng bước, vì hai dòng cuối của nó quyết định §33.3 chọn
-nhánh A hay B — thứ ảnh hưởng thẳng tới compose.
+**Hai cây route song song.** Đặc tả liệt cả `/session` lẫn `/api/session`, `/event` lẫn
+`/api/event`. Nhánh **không** có tiền tố `/api` là nhánh đã đo. Không trộn hai nhánh.
+
+Máy chủ chạy `opencode serve --port 4096 --hostname 0.0.0.0` **bên trong container**
+(0.0.0.0 ở đây là không gian mạng riêng của container, không publish ra host — §34).
+
+## 17.2 Những gì phép đo ràng buộc lên thiết kế
+
+Tám hạng mục cũ đều đã có endpoint xác nhận, nên mọi "nhánh dự phòng" ở bản trước đều
+không cần dùng: **không** phải đọc `opencode.json` để liệt model, **không** phải mount
+`agent/` để liệt agent, **không** phải chạy `git diff` thay cho `/session/:id/diff`.
+Đổi lại, phép đo đẻ ra sáu ràng buộc cứng mà bản suy đoán không thấy:
+
+**1. Luồng sự kiện KHÔNG replay.** Nối lại lần hai chỉ nhận `server.connected`; sự kiện
+phát ra trong lúc đứt là **mất vĩnh viễn**. Không có `Last-Event-ID`. Đây là ràng buộc
+kiến trúc, không phải chuyện tối ưu:
+
+- sau mỗi lần nối lại **bắt buộc** đối chiếu bằng thăm dò — `GET /session/:id/message`
+  cho nội dung, `GET /permission` cho yêu cầu quyền còn treo;
+- `GET /permission` tồn tại, nên nhánh dự phòng "huỷ task sau 60 giây mất dấu" ở bản
+  trước **không còn cần thiết** — hoà giải được bằng dữ liệu thật;
+- `server.heartbeat` (~10 s/lần) là cách phát hiện luồng chết mà không phải chờ TCP timeout.
+
+**2. `prompt_async` trả 204 không có thân.** Không lấy được `messageID` từ phản hồi.
+Gateway **tự sinh `messageID`** (đặc tả cho phép, mẫu `^msg`) và gửi kèm trong thân —
+đó là cách duy nhất tương quan chắc chắn giữa lệnh gửi đi và sự kiện nhận về.
+
+**3. Mốc dừng là `session.idle`.** Xuất hiện đúng một lần cho cả lượt chạy. Không dùng
+`session.status {type:"idle"}` làm mốc: nó phát 6 lần, busy↔idle xen kẽ giữa các bước.
+
+**4. 41% sự kiện là nhiễu.** Đặc tả khai 135 lớp; một lượt chạy thật phát 16 loại, trong
+đó `plugin.added` chiếm 45/111. Bộ lọc phải theo **danh sách trắng** 9 loại
+(`session.created`, `session.status`, `session.idle`, `session.diff`, `message.updated`,
+`message.part.updated`, `message.part.delta`, `permission.asked`, `permission.replied`),
+cộng `server.connected`/`server.heartbeat` cho vòng đời kết nối. Danh sách đen sẽ hỏng
+ngay lần OpenCode thêm loại mới.
+
+**5. `permission.asked` đã đủ dữ liệu để dựng nút bấm.** Nó mang `permission`,
+`patterns`, `metadata.command`, `always` và `tool.callID` — không cần gọi thêm
+`GET /permission` trước khi hỏi người dùng. Lưu ý ngữ nghĩa: `always` **ghi vào cấu hình
+quyền của server**, bền qua các phiên; nhãn nút phải nói rõ, không được để người dùng
+hiểu là "luôn cho phép trong phiên này".
+
+**6. Câu trả lời cuối nằm ở message assistant CUỐI CÙNG.** Một lượt có dùng tool sinh
+**hai** message assistant (một cho bước gọi tool, một cho bước trả lời). Lấy nhầm cái
+đầu thì người dùng nhận được đoạn văn dở dang trước khi tool chạy.
+
+Còn hai câu hỏi thiết kế mà phép đo **không** trả lời, và cả hai đều không chặn:
+
+- **Gắn session vào thư mục project** — `POST /session` trả `projectID:"global"` và
+  `directory:"/workspace"`, tức lấy từ `working_dir` của container. V1 chỉ đăng ký một
+  project thử nghiệm nên điều này đủ dùng; mở project thứ hai cần thêm một container,
+  không còn là "chỉ INSERT một dòng". Ghi lại để đừng hứa nhầm với người dùng.
+- **Nội dung artifact** — vẫn theo nhánh B của §33.3 (mount `./workspace:/workspace:ro`
+  cho Gateway). Diff thì **không** còn buộc vào nhánh B nữa vì `/session/:id/diff` có
+  thật, nên hai dòng cuối §17.2 cũ **không còn buộc nhau**.
 
 ## 17.3 Nội dung prompt
 
