@@ -1,18 +1,15 @@
-# Chuan hoa ky tu xuong dong. Khong co file nay, mot lan sua vai dong tren
-# Windows co the ghi lai CA FILE bang CRLF — diff phinh len hang nghin dong, va
-# bo quet secret phai soi lai ca noi dung cu roi bao dong gia. Da xay ra that
-# voi Telegram.md.
-* text=auto eol=lf
-
-# Script chay tren Linux: CRLF lam shebang hong voi thong diep rat kho doc
-# ("bad interpreter: /bin/bash^M").
-*.sh   text eol=lf
-*.py   text eol=lf
-*.cjs  text eol=lf
-*.ts   text eol=lf
-*.yml  text eol=lf
-*.yaml text eol=lf
+# CHI ep ky tu xuong dong cho nhung file ma CRLF that su lam hong thu gi.
+#
+# Ban dau file nay co dong `* text=auto eol=lf` cho MOI file. Hau qua: cac blob
+# da commit truoc do van giu CRLF, nen git bao lech vinh vien voi working tree va
+# doi mot lan `git add --renormalize` ghi lai toan bo — mot commit hang nghin dong
+# thuan ky tu xuong dong, khong dang.
+#
+# Van de that su can chan la khac: script chay tren Linux ma co CRLF thi shebang
+# hong voi thong diep rat kho doc ("bad interpreter: /bin/bash^M"). Chi ep cho
+# chung, va de git tu xu ly phan con lai.
+*.sh text eol=lf
 
 # Nhi phan: khong dung toi.
-*.png  binary
-*.jpg  binary
+*.png binary
+*.jpg binary
