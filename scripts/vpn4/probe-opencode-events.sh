@@ -25,7 +25,12 @@ BIEU="s/khong-doi-gi/khong-doi-gi/"
 if [ -n "$PASS" ];   then BIEU="$BIEU; s|$(thoat_sed "$PASS")|***MATKHAU***|g"; fi
 if [ -n "$APIKEY" ]; then BIEU="$BIEU; s|$(thoat_sed "$APIKEY")|***APIKEY***|g"; fi
 
-H='-H "Authorization: Bearer $OPENCODE_SERVER_PASSWORD"'
+# HTTP Basic, KHONG phai Bearer. Vong do truoc da thu ca ba cach va chi Basic ra
+# 200 — nhung ban ghi in nhan bang phan truoc dau hai cham cua tieu de, nen ca
+# Bearer lan Basic deu hien thanh dong "Authorization" va nhin y het nhau. Doc
+# nham dong do sang Bearer la ly do vong nay tra 401 o lan chay dau. Nhan da duoc
+# sua trong probe-opencode-api.sh.
+H='-H "Authorization: Basic $(printf "opencode:%s" "$OPENCODE_SERVER_PASSWORD" | base64 -w0)"'
 oc() { docker exec opencode-server sh -c "$1"; }
 
 than() {
