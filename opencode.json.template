@@ -51,6 +51,12 @@
       }
     }
   },
+  "//skills": "Thu muc skill duoc mount :ro tu ./skill_new (xem docker-compose.yml). Hinh dang {paths:[...]} lay tu Config.skills trong dac ta da tai ve, khong doan. permission.skill = \"ask\" nen agent hoi truoc khi dung.",
+  "skills": {
+    "paths": [
+      "/opt/skills"
+    ]
+  },
   "//permission": "webfetch/websearch la \"allow\" theo yeu cau cua nguoi dung (2026-08-18) de cac MCP tim kiem chay tron. Danh doi da biet: agent goi duoc URL tuy y ma khong hoi, tuc no co the mang noi dung workspace ra ngoai. `bash` van \"ask\" va ban do cam van nguyen.",
   "permission": {
     "read": "allow",

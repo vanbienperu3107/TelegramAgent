@@ -59,3 +59,10 @@ workspace/
 # Cau hinh sinh luc deploy tu template + /v1/models cua cliproxy
 opencode.json
 opencode.json.bak
+
+# Ngoai le cho thu muc skill: luat `data/` o tren khop MOI thu muc ten data, ke
+# ca `skill_new/drawio-skill/data/` — noi chua chi muc hinh khoi (445 KB) ma
+# skill khong chay duoc neu thieu. Git khong cho bo qua mot tep ben trong thu muc
+# da bi ignore, nen phai mo lai CA thu muc lan noi dung.
+!skill_new/**/data/
+!skill_new/**/data/**

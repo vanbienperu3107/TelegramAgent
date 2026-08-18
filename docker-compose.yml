@@ -70,6 +70,10 @@ services:
       # dung phai duyet lai tu dau sau moi lan deploy, va loi hua "vinh vien" o
       # nhan nut thanh sai.
       - opencode_data:/home/node/.local/share/opencode
+      # Thu muc skill, CHI DOC. Agent khong duoc sua skill cua chinh no: mot lan
+      # sua nham la moi phien sau deu chay theo huong dan da hong, va khong ai
+      # doi chieu lai voi ban trong git.
+      - ./skill_new:/opt/skills:ro
     # Thu muc lam viec cua agent = DUNG thu muc project, khong phai thu muc cha.
     #
     # `POST /session` KHONG co truong thu muc (da doi chieu voi dac ta da tai ve:
