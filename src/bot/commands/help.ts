@@ -83,7 +83,24 @@ export function doanLenh(go: string): string | null {
 /** Cau tra loi cho mot lenh khong ton tai. Khong bao gio im lang. */
 export function renderLenhLa(go: string): string {
   const doan = doanLenh(go);
-  if (doan) return `Khong co lenh ${go}. Y ban la /${doan} phai khong?`;
+
+  // KHONG BAO GIO goi y chinh no.
+  //
+  // Neu doanLenh tra ve dung cai nguoi dung vua go, nghia la ten lenh CO trong
+  // DANH_SACH_LENH nhung KHONG co `bot.command` nao dang ky no — va cau tra loi
+  // "Khong co lenh /dondep. Y ban la /dondep phai khong?" la mot cau vo nghia,
+  // nguoi dung go lai y het roi lai nhan y het.
+  //
+  // Da xay ra that voi /dondep ngay 2026-08-18: lenh duoc them vao danh sach va
+  // service co san ham xu ly, nhung buoc noi handler bi bo quen.
+  const goSach = go.toLowerCase().replace(/^\//, '');
+  if (doan && doan !== goSach) return `Khong co lenh ${go}. Y ban la /${doan} phai khong?`;
+  if (doan === goSach) {
+    return (
+      `Lenh /${doan} co trong danh sach nhung chua duoc noi vao bot — day la loi cua ` +
+      `he thong, khong phai ban go sai. Da ghi log.`
+    );
+  }
   return `Khong co lenh ${go}. Go /help de xem danh sach lenh.`;
 }
 

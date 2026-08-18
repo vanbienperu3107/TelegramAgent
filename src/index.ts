@@ -305,6 +305,23 @@ async function main() {
     return state.currentSessionId;
   };
 
+  bot.command(moiTenCua('dondep'), async (ctx) => {
+    if (!(await doiDb(ctx))) return;
+    const state = cache.get(ctx.auth.userId);
+    const soDon = await khoPhien.donPhienDaChet(ctx.auth.userId);
+    if (soDon === 0) {
+      await ctx.reply('🧹 Khong co phien chet nao. Danh sach da sach.');
+      return;
+    }
+    // Phien dang chon co the vua bi don. De nguyen thi cau hoi ke tiep di vao mot
+    // phien khong con ton tai va nguoi dung nhan loi 404 kho hieu.
+    if (state.currentSessionId !== null) {
+      const conSong = await khoPhien.phienCuaNguoiDung(state.currentSessionId, ctx.auth.userId);
+      if (!conSong) await cache.set(ctx.auth.userId, { currentSessionId: null });
+    }
+    await ctx.reply(`🧹 Da don ${soDon} phien da chet. Dung /new de tao phien moi.`);
+  });
+
   bot.command(moiTenCua('dong'), async (ctx) => {
     if (!(await doiDb(ctx))) return;
     const state = cache.get(ctx.auth.userId);
