@@ -37,7 +37,7 @@ than() {
   # 1. Mo luong TRUOC khi co viec gi xay ra. Neu mo sau thi khong biet duoc su
   #    kien nao bi mat va su kien nao chi don gian chua toi.
   docker exec opencode-server sh -c \
-    "timeout 90 curl -sN --max-time 90 $H $BASE/event > $RA 2>/dev/null" &
+    "timeout 150 curl -sN --max-time 150 $H $BASE/event > $RA 2>/dev/null" &
   local bg=$!
   sleep 3
 
@@ -56,7 +56,34 @@ than() {
   oc "curl -sS -o /tmp/pr.json -w 'HTTP %{http_code}\n' --max-time 30 $H -X POST -H 'Content-Type: application/json' -d '$than_json' $BASE/session/$ses/prompt_async; head -c 400 /tmp/pr.json"
   echo
 
-  # 4. Doi luot chay xong. `wait` cho den khi timeout 90 het han.
+  # 4. TU DUYET moi yeu cau quyen. Khong co buoc nay thi luot chay ket o cua duyet
+  #    va ta khong bao gio thay TIN HIEU KET THUC — dung cai ma bo dieu phoi su
+  #    kien can nhat de biet khi nao ngung cap nhat man hinh tien do.
+  #    Tra loi 'once' chu khong 'always': 'always' ghi vao cau hinh quyen cua
+  #    server va lam thay doi trang thai ngoai pham vi phep do.
+  local vong=0
+  while [ "$vong" -lt 28 ]; do
+    vong=$((vong + 1))
+    oc "curl -sS --max-time 10 $H $BASE/permission" > /tmp/perm.json 2>/dev/null
+    python3 - "$ses" <<'PY' > /tmp/perm-ids.txt 2>/dev/null || true
+import json, sys
+try:
+    ds = json.load(open('/tmp/perm.json'))
+except Exception:
+    raise SystemExit
+for p in ds if isinstance(ds, list) else []:
+    if p.get('sessionID') == sys.argv[1]:
+        print(p['id'])
+PY
+    while read -r pid; do
+      [ -n "$pid" ] || continue
+      echo "duyet quyen $pid"
+      oc "curl -sS -o /dev/null -w 'tra loi quyen: HTTP %{http_code}\n' --max-time 10 $H -X POST -H 'Content-Type: application/json' -d '{\"response\":\"once\"}' $BASE/session/$ses/permissions/$pid"
+    done < /tmp/perm-ids.txt
+    sleep 3
+  done
+
+  # 5. Doi luong dong lai (timeout 90 het han).
   wait "$bg" 2>/dev/null
 
   echo "########## THONG KE SU KIEN ##########"
