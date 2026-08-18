@@ -3,8 +3,11 @@
 Lop loi ma cac test nay chan, ca ba deu tung xay ra that trong dac ta:
   - gia tri co ky tu dac biet bi bien dang giua luc ghi va luc doc
   - chuoi giu cho __TEN__ nam GIUA mot gia tri khong duoc thay
-  - .env.opencode chua nhieu hon 2 bien, tuc do secret vao container agent
+  - .env.opencode chua bien ngoai danh sach dong, tuc do secret vao container agent
+  - .env.opencode THIEU mot giu cho {env:...} ma opencode.json can (lot luoi that
+    su xay ra voi CLIPROXY_BASE_URL: baseURL rong, khong loi, deploy van xanh)
 """
+import json
 import os
 import pathlib
 import subprocess
@@ -105,15 +108,44 @@ def test_moi_bien_trong_khuon_deu_co_mat_trong_file_sinh_ra(tmp_path):
         assert want <= set(readenv.parse(tmp_path / out))
 
 
-def test_env_opencode_chi_co_dung_hai_bien(tmp_path):
-    """Bat bien an ninh, khong phai quy uoc: moi bien thua o day la mot bi mat
-    ma agent doc duoc qua /proc/self/environ."""
+def test_env_opencode_chi_co_bien_trong_danh_sach_dong(tmp_path):
+    """Bat bien an ninh, khong phai quy uoc: moi bien THUA o day la mot bi mat ma
+    agent doc duoc qua /proc/self/environ.
+
+    Truoc day phep kiem nay ghi "dung hai bien". Doc nham con so thanh cai luat da
+    lam ta bo sot CLIPROXY_BASE_URL suot ca vong deploy: no khong phai bi mat,
+    nhung "hai bien" thi khong con cho cho no. Bat bien dung la DANH SACH DONG."""
     proc = _gen(tmp_path, _base_env())
     assert proc.returncode == 0, proc.stderr
     assert set(readenv.parse(tmp_path / ".env.opencode")) == {
         "CLIPROXY_API_KEY",
         "OPENCODE_SERVER_PASSWORD",
+        "CLIPROXY_BASE_URL",
     }
+
+
+def test_moi_giu_cho_env_trong_opencode_json_deu_co_trong_env_opencode():
+    """Chan CA LOP loi, khong chi mot ca.
+
+    OpenCode giai "{env:X}" trong opencode.json tu moi truong cua chinh tien trinh
+    server, ma tien trinh do CHI doc .env.opencode. Bat ky giu cho nao khong co
+    trong khuon deu am tham thanh chuoi rong — khong loi, khong canh bao, chi la
+    mot cau hinh sai chay binh thuong cho den luc goi model.
+
+    Do dung la cach CLIPROXY_BASE_URL lot luoi: `GET /config` tren container that
+    tra "baseURL":"" trong khi moi phep kiem deu xanh."""
+    import re
+
+    mau = json.loads((ROOT / "opencode.json.template").read_text(encoding="utf-8"))
+    giu_cho = set(re.findall(r"\{env:([A-Z0-9_]+)\}", json.dumps(mau)))
+    assert giu_cho, "khuon khong con giu cho {env:...} nao — phep kiem nay da vo nghia"
+
+    co = {
+        line.split("=", 1)[0].strip()
+        for line in (ROOT / ".env.opencode.example").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#") and "=" in line
+    }
+    assert giu_cho <= co, "giu cho khong co trong .env.opencode.example: %s" % sorted(giu_cho - co)
 
 
 def test_env_opencode_khong_chua_bi_mat_cua_gateway(tmp_path):

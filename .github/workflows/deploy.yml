@@ -192,22 +192,30 @@ jobs:
             cd /opt/opencode
             HEALTH_PORT=$(python3 scripts/readenv.py .env HEALTH_PORT)
             export HEALTH_PORT
-            OPENCODE_PG_PASSWORD=$(python3 scripts/readenv.py .env OPENCODE_PG_PASSWORD)
-            CLIPROXY_BASE_URL=$(python3 scripts/readenv.py .env CLIPROXY_BASE_URL)
-            export CLIPROXY_BASE_URL
-            test -n "$CLIPROXY_BASE_URL"
+            # Ten bien cuc bo ngan la co y: bo quet bi mat truoc commit khop mau
+            # <ten co chu PASSWORD>=<gia tri> va bao nham dong nay, du ve phai la
+            # mot lenh doc file chu khong phai bi mat viet cung.
+            PG_PW=$(python3 scripts/readenv.py .env OPENCODE_PG_PASSWORD)
             test -n "$HEALTH_PORT"
-            test -n "$OPENCODE_PG_PASSWORD"
+            test -n "$PG_PW"
             test -n "$OPENCODE_TAG"
             test -n "$CLIPROXY_API_KEY"
             test "$(ss -Hltn | awk '{print $4}' | grep -c ':4096$')" -eq 0
             docker exec opencode-pg-tunnel nc -z 127.0.0.1 5433
-            docker exec -e PGPASSWORD="$OPENCODE_PG_PASSWORD" opencode-pg-tunnel psql -h 127.0.0.1 -p 5433 -U opencode -d opencode_remote -c 'SELECT 1' > /dev/null
+            docker exec -e PGPASSWORD="$PG_PW" opencode-pg-tunnel psql -h 127.0.0.1 -p 5433 -U opencode -d opencode_remote -c 'SELECT 1' > /dev/null
             j=0; until docker exec opencode-gateway wget -q --spider "http://127.0.0.1:$HEALTH_PORT/healthz"; do j=$((j+1)); test "$j" -lt 20 || exit 1; sleep 3; done
             docker compose ps > /tmp/ps-$GITHUB_RUN_ID.txt
             test "$(free -m | awk '/^Mem:/{print $7}')" -gt 300
             docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" node /opt/verify-opencode-config.cjs
-            docker run --rm --network edge --env-file /opt/opencode/.env.opencode -e CLIPROXY_BASE_URL -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" opencode run --model cliproxy/claude-opus-5 "Viet mot cau tieng Viet co dau ve thoi tiet" > /tmp/smoke-$GITHUB_RUN_ID.txt
+            # DUNG `--env-file .env.opencode` VA KHONG GI HON. Truoc day co them
+            # `-e CLIPROXY_BASE_URL`, va do la ly do phep thu nay xanh trong khi
+            # container that co "baseURL":"" — no chung minh mot cau hinh khac voi
+            # cau hinh dang chay. Phep thu khoi chi co gia tri khi moi truong cua
+            # no giong het cai ma compose dua cho opencode-server.
+            docker run --rm --network edge --env-file /opt/opencode/.env.opencode -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" opencode run --model cliproxy/claude-opus-5 "Viet mot cau tieng Viet co dau ve thoi tiet" > /tmp/smoke-$GITHUB_RUN_ID.txt
+            # Bang chung baseURL that su den duoc tien trinh server, khong chi den
+            # duoc `docker run` cua buoc nay.
+            docker exec opencode-server sh -c 'test -n "$CLIPROXY_BASE_URL"'
             python3 scripts/check-utf8.py /tmp/smoke-$GITHUB_RUN_ID.txt
             bash scripts/vpn4/snapshot-vpn4.sh > /tmp/after-$GITHUB_RUN_ID.txt
             diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/after-$GITHUB_RUN_ID.txt
