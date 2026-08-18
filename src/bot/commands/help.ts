@@ -16,6 +16,8 @@ export const DANH_SACH_LENH: ReadonlyArray<MoTaLenh> = [
   { lenh: 'sessions', moTa: 'Chuyen sang phien khac' },
   { lenh: 'model', moTa: 'Chon model' },
   { lenh: 'agent', moTa: 'Chon agent' },
+  { lenh: 'diff', moTa: 'Xem agent da sua nhung file nao' },
+  { lenh: 'patch', moTa: 'Xem noi dung thay doi' },
   { lenh: 'abort', moTa: 'Huy task dang chay' },
   { lenh: 'help', moTa: 'Xem huong dan nay' },
 ];
@@ -52,6 +54,9 @@ export const TEN_KHAC: Readonly<Record<string, string>> = {
   stop: 'abort',
   moi: 'new',
   tro_giup: 'help',
+  diffs: 'diff',
+  changes: 'diff',
+  patches: 'patch',
 };
 
 /**
