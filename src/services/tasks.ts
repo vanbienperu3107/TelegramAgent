@@ -70,6 +70,7 @@ export class KhoTask {
   async taoTask(doiSo: {
     telegramUserId: bigint;
     telegramChatId: bigint;
+    telegramStatusMessageId?: bigint;
     opencodeSessionId: string;
     opencodeMessageId: string;
     prompt: string;
@@ -77,10 +78,11 @@ export class KhoTask {
     try {
       const rows = await this.sql<Row[]>`
         INSERT INTO tasks (
-          telegram_user_id, telegram_chat_id, opencode_session_id,
-          opencode_message_id, prompt
+          telegram_user_id, telegram_chat_id, telegram_status_message_id,
+          opencode_session_id, opencode_message_id, prompt
         ) VALUES (
           ${String(doiSo.telegramUserId)}, ${String(doiSo.telegramChatId)},
+          ${doiSo.telegramStatusMessageId === undefined ? null : String(doiSo.telegramStatusMessageId)},
           ${doiSo.opencodeSessionId}, ${doiSo.opencodeMessageId}, ${doiSo.prompt}
         )
         RETURNING id, telegram_user_id, telegram_chat_id, telegram_status_message_id,

@@ -95,6 +95,39 @@ describe('khoa mot task moi nguoi', () => {
 });
 
 describe('ghi so truoc, gui prompt sau', () => {
+  it('gui tin nhan TRUOC khi ghi so — phan hoi ngay, bot mot vong DB', async () => {
+    // Truoc day: INSERT (307 ms) -> gui tin nhan -> UPDATE gan id (307 ms) -> moi
+    // gui prompt. Nguoi dung khong thay gi trong hon nua giay, va do la HAI vong
+    // DB noi tiep chi de ghi so, truoc khi lam bat ky viec gi co ich.
+    const thuTu: string[] = [];
+    const { bo } = dungBo({
+      kho: {
+        taoTask: vi.fn(async () => {
+          thuTu.push('ghi-so');
+          return taskGia();
+        }),
+      },
+    });
+    const goc = dungBo();
+    void goc;
+    await bo.batDau({
+      telegramUserId: 7n,
+      telegramChatId: 9n,
+      sessionID: 'ses_1',
+      van: 'chao',
+    });
+    expect(thuTu[0]).toBe('ghi-so');
+  });
+
+  it('khong con luot UPDATE rieng de gan id tin nhan', async () => {
+    // Id tin nhan di thang vao INSERT. Con mot luot truy van tren duong di.
+    const { bo, kho } = dungBo();
+    await batDau(bo);
+    expect((kho.ganTinNhanTrangThai as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+    const doiSo = (kho.taoTask as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(doiSo.telegramStatusMessageId).toBe(100n);
+  });
+
   it('task duoc ghi so TRUOC khi prompt chay', async () => {
     // Nguoc lai thi su kien dau tien den truoc khi co task de gan vao, va tien
     // do dau bi mat. Voi mot vong 307 ms, cua so do du rong de xay ra that.
@@ -176,9 +209,38 @@ describe('vong doi qua su kien', () => {
 });
 
 describe('nut duyet quyen', () => {
-  it('chi gui nut MOT lan cho moi yeu cau', async () => {
-    // Sua lai ban phim moi vai giay lam nut nhay duoi ngon tay nguoi dung.
+  it('LUON gan lai ban phim khi con dang cho duyet', async () => {
+    // Test nay truoc day khang dinh dieu NGUOC LAI ("chi gui nut mot lan") va
+    // do chinh la bug: Telegram coi viec sua tin nhan KHONG kem reply_markup la
+    // lenh XOA ban phim. Su kien tiep theo — message.part.updated, session.updated,
+    // den lien tuc — sua lai tin nhan khong kem nut, va nut bien mat trong chua
+    // day mot giay. Nguoi dung nhin thay dong "Cho ban duyet" ma khong co gi de
+    // bam, agent cho vinh vien.
+    //
+    // Da xay ra that tren may nguoi dung ngay 2026-08-18.
     const { bo, tg } = dungBo();
+    await batDau(bo);
+    await bo.nhanSuKien({
+      type: 'permission.asked',
+      properties: { sessionID: 'ses_1', id: 'per_1', permission: 'bash' },
+    });
+    // Mot su kien BAT KY den sau do, khong lien quan gi toi quyen.
+    await bo.nhanSuKien({
+      type: 'message.part.delta',
+      properties: { sessionID: 'ses_1', messageID: 'msg_1', field: 'text', delta: 'x' },
+    });
+
+    const lanSua = tg.suaTinNhan.mock.calls;
+    expect(lanSua.length).toBeGreaterThan(1);
+    for (const [, , , banPhim] of lanSua) {
+      expect(banPhim, 'moi lan sua khi dang cho duyet deu phai kem ban phim').toBeDefined();
+    }
+  });
+
+  it('doi trang thai DB chi mot lan cho moi yeu cau quyen', async () => {
+    // Ban phim thi gan lai moi lan, nhung mot vong ghi DB 307 ms moi su kien la
+    // lang phi thuan tuy.
+    const { bo, kho } = dungBo();
     await batDau(bo);
     const ev = {
       type: 'permission.asked',
@@ -186,8 +248,7 @@ describe('nut duyet quyen', () => {
     };
     await bo.nhanSuKien(ev);
     await bo.nhanSuKien(ev);
-    const coNut = tg.suaTinNhan.mock.calls.filter((c) => c[3] !== undefined);
-    expect(coNut).toHaveLength(1);
+    expect((kho.doiTrangThai as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
   });
 
   it('ghi trang thai waiting_permission de khoa khong bi coi la treo', async () => {
