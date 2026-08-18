@@ -148,6 +148,8 @@ jobs:
             CLIPROXY_BASE_URL=$(python3 scripts/readenv.py .env CLIPROXY_BASE_URL)
             export CLIPROXY_BASE_URL
             test -n "$CLIPROXY_BASE_URL"
+            install -d -m 755 docs
+            chown 1000:1000 opencode.json docs
             docker compose pull
             docker run --rm --network edge -e CLIPROXY_BASE_URL -e CLIPROXY_API_KEY -v /opt/opencode/opencode.json.template:/app/opencode.json.template:ro -v /opt/opencode/opencode.json:/app/opencode.json -v /opt/opencode/docs:/app/docs -w /app --entrypoint node "ghcr.io/vanbienperu3107/opencode-telegram-gateway:$GATEWAY_TAG" scripts/sync-models.cjs
             chmod 644 opencode.json
