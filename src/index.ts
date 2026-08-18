@@ -26,6 +26,7 @@ import {
   tachModel,
 } from './bot/commands/chon.js';
 import { banPhimDuyet, giaiMa } from './bot/keyboards.js';
+import { moTaLoi } from './bot/loi.js';
 import { OpenCodeClient } from './services/opencode-client.js';
 import { KhoPhien } from './services/sessions.js';
 import { KhoTask } from './services/tasks.js';
@@ -411,9 +412,22 @@ async function main() {
       .catch((e) => log.warn({ err: e }, 'khong dat duoc tua de phien'));
   });
 
-  bot.catch((err) => {
+  bot.catch(async (err) => {
     // Loi chi tiet vao log, Telegram chi nhan mot cau ngan (§41).
     log.error({ err: err.error, update_id: err.ctx.update.update_id }, 'loi khi xu ly update');
+
+    // VA PHAI TRA LOI. Truoc day cho nay chi ghi log — chu thich tren noi "Telegram
+    // chi nhan mot cau ngan" nhung cau do khong bao gio duoc gui. Nguoi dung go
+    // /agent luc OpenCode chua san sang va khong nhan duoc gi ca, khong phan biet
+    // duoc voi bot chet.
+    const traLoi = err.ctx.callbackQuery
+      ? err.ctx.answerCallbackQuery(moTaLoi(err.error))
+      : err.ctx.reply(moTaLoi(err.error));
+    await traLoi.catch((e) => {
+      // Tra loi cung hong (chat bi chan, 429...). Chi con log — nhung khong duoc
+      // de loi nay noi len va giet vong polling.
+      log.warn({ err: e }, 'khong gui duoc thong bao loi cho nguoi dung');
+    });
   });
 
   // Theo doi DB nen: dung cho /healthz va cho quyet dinh che do suy giam.
