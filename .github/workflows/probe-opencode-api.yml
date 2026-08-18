@@ -1,0 +1,53 @@
+name: Do be mat API cua OpenCode
+
+# Deliverable con no cua Milestone 0. Plan (§17.2) ghi 8 endpoint la "?" va cam
+# viet Event Processor truoc khi co mau su kien that — vi mot dac ta doan mo se
+# keo theo ca §18, §19, §20, §26 va bon AC.
+#
+# Chay tren runner, SSH vao vpn4, hoi chinh opencode-server dang chay, roi tai
+# ket qua ve lam artifact. KHONG chay tren may ca nhan: ket qua phai tai lap
+# duoc va phai gan voi mot phien ban image cu the.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vpn4-host
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hoi opencode-server dang chay
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          VPN4_HOST_KEY_B64: ${{ secrets.VPN4_HOST_KEY_B64 }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST_VPN4: ${{ secrets.SSH_HOST_VPN4 }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+        run: |
+          install -m 600 /dev/null k4 && echo "$SSH_KEY" > k4
+          install -m 644 /dev/null kh4 && echo "$VPN4_HOST_KEY_B64" | base64 -d > kh4
+          SSH4="ssh -p $SSH_PORT -i k4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 $SSH_USER@$SSH_HOST_VPN4"
+          # Gui script tu runner thay vi dua vao ban tren vpn4: /opt/opencode chi
+          # duoc cap nhat khi deploy chay, ma do API la viec doc lap voi deploy.
+          scp -P "$SSH_PORT" -i k4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 \
+            scripts/vpn4/probe-opencode-api.sh "$SSH_USER@$SSH_HOST_VPN4:/tmp/probe-api.sh"
+          $SSH4 "bash /tmp/probe-api.sh" > probe.txt 2>&1 || true
+          $SSH4 "cat /tmp/opencode-openapi.json" > opencode-openapi.json 2>/dev/null || echo '{}' > opencode-openapi.json
+          $SSH4 "cat /tmp/opencode-events.jsonl" > opencode-events.jsonl 2>/dev/null || true
+          echo "=== tom tat ===" >> "$GITHUB_STEP_SUMMARY"
+          head -c 4000 probe.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-api-probe
+          path: |
+            probe.txt
+            opencode-openapi.json
+            opencode-events.jsonl
