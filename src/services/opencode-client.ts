@@ -261,7 +261,7 @@ export class OpenCodeClient {
     const ds = await this.dsMessage(sessionID);
     for (let i = ds.length - 1; i >= 0; i -= 1) {
       const m = ds[i];
-      if ((m.info as { role?: string })?.role !== 'assistant') continue;
+      if (!m || (m.info as { role?: string })?.role !== 'assistant') continue;
       const van = (m.parts ?? [])
         .filter((p) => p.type === 'text' && typeof p.text === 'string')
         .map((p) => p.text as string)

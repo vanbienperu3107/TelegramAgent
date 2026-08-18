@@ -34,7 +34,7 @@ describe('xac thuc', () => {
     const fetchGia = vi.fn().mockResolvedValue(traLoi([]));
     vi.stubGlobal('fetch', fetchGia);
     await new OpenCodeClient(cfg).dsAgent();
-    const tieuDe = fetchGia.mock.calls[0][1].headers as Record<string, string>;
+    const tieuDe = fetchGia.mock.calls[0]![1].headers as Record<string, string>;
     const mong = `Basic ${Buffer.from('opencode:mat-khau-thu').toString('base64')}`;
     expect(tieuDe.authorization).toBe(mong);
     vi.unstubAllGlobals();
@@ -50,13 +50,13 @@ describe('guiPrompt', () => {
     // cach nao tuong quan lenh gui voi su kien nhan.
     const id = await new OpenCodeClient(cfg).guiPrompt({ sessionID: 'ses_1', van: 'chao' });
     expect(id).toMatch(/^msg/);
-    const than = JSON.parse((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    const than = JSON.parse((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1].body);
     expect(than.messageID).toBe(id);
   });
 
   it('luon gui parts — truong bat buoc duy nhat theo dac ta', async () => {
     await new OpenCodeClient(cfg).guiPrompt({ sessionID: 'ses_1', van: 'chao' });
-    const than = JSON.parse((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    const than = JSON.parse((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1].body);
     expect(than.parts).toEqual([{ type: 'text', text: 'chao' }]);
     expect(than.model).toEqual({ providerID: 'cliproxy', modelID: 'claude-opus-5' });
   });
@@ -121,7 +121,7 @@ describe('tach khung SSE', () => {
       'data: {"id":"e1","type":"session.idle","properties":{"sessionID":"ses_1"}}\n\n',
     );
     expect(suKien).toHaveLength(1);
-    expect(suKien[0].type).toBe('session.idle');
+    expect(suKien[0]!.type).toBe('session.idle');
   });
 
   it('GIU LAI khung bi cat giua chung thay vi vut di', () => {
@@ -130,7 +130,7 @@ describe('tach khung SSE', () => {
     const a = tachKhungSSE('data: {"type":"message.part.delta","prope');
     expect(a.suKien).toHaveLength(0);
     const b = tachKhungSSE(a.du + 'rties":{"delta":"xin"}}\n\n');
-    expect(b.suKien[0].properties).toEqual({ delta: 'xin' });
+    expect(b.suKien[0]!.properties).toEqual({ delta: 'xin' });
   });
 
   it('mot khung hong khong lam chet ca luong', () => {
@@ -138,7 +138,7 @@ describe('tach khung SSE', () => {
       'data: {khong-phai-json\n\ndata: {"type":"session.idle"}\n\n',
     );
     expect(suKien).toHaveLength(1);
-    expect(suKien[0].type).toBe('session.idle');
+    expect(suKien[0]!.type).toBe('session.idle');
   });
 
   it('chap nhan CRLF', () => {
