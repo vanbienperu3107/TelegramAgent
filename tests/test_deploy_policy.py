@@ -292,8 +292,7 @@ def test_chu_thich_nhac_ten_bien_thi_khong_bi_bao_nham(repo):
     Da xay ra that: mot chu thich giai thich vi sao khong nen viet $VAR trong
     `sh -c` da lam CI do, du dong do la chu thich. Dau $ trong chu thich khong bao
     gio duoc khai trien."""
-    script = "
-".join([
+    script = chr(10).join([
         "exec 9>/var/lock/vpn4-deploy",
         "flock -w 600 9 || exit 1",
         "cd /opt/opencode",
@@ -308,8 +307,7 @@ def test_chu_thich_nhac_ten_bien_thi_khong_bi_bao_nham(repo):
 
 def test_van_bat_bien_khong_nguon_o_dong_lenh_that(repo):
     """Bo chu thich khong duoc lam thung chot chan: dong lenh that van phai bi bat."""
-    script = "
-".join([
+    script = chr(10).join([
         "exec 9>/var/lock/vpn4-deploy",
         "flock -w 600 9 || exit 1",
         "cd /opt/opencode",
@@ -325,8 +323,7 @@ def test_van_bat_bien_khong_nguon_o_dong_lenh_that(repo):
 def test_dau_thang_trong_khai_trien_khong_bi_cat_nham(repo):
     """`${VAR#tien_to}` co dau # nhung khong phai chu thich. Neu bo kiem cat tu dau
     # den het dong thi tham chieu that bien mat va chot chan im lang."""
-    script = "
-".join([
+    script = chr(10).join([
         "exec 9>/var/lock/vpn4-deploy",
         "flock -w 600 9 || exit 1",
         "cd /opt/opencode",
