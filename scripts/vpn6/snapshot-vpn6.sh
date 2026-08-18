@@ -37,8 +37,14 @@ $PGC -c "SELECT datname FROM pg_database WHERE datistemplate=false AND datname <
 echo "### danh sach role (loc bo cai cua du an nay)"
 $PGC -c "SELECT rolname FROM pg_roles WHERE rolcanlogin AND rolname <> 'opencode' ORDER BY 1"
 
-echo "### ACL cua hai DB dung chung — buoc 3 co y doi, phai quan sat duoc"
-$PGC -c "SELECT datname || ' acl=' || COALESCE(datacl::text,'NULL') FROM pg_database WHERE datname IN ('derp','headscale') ORDER BY 1"
+echo "### ACL cua hai DB dung chung — CHI grant cho role CO TEN"
+# Bo muc cua PUBLIC (muc bat dau bang "="): do CHINH LA thu buoc 3 co y doi
+# (REVOKE TEMP ... FROM PUBLIC), nen de no trong `diff` thi lan deploy dau tien
+# luon do — va da do that. Bat bien that su can giu la "grant cho cac role CO
+# TEN khong duoc doi": derp=CTc, headscale=CTc, tailnet_rw=CTc. Chinh chung moi
+# la thu cac dich vu dang chay dua vao; PUBLIC thi khong ai dua vao (da do
+# 2026-08-18, xem §0.2).
+$PGC -c "SELECT datname || ' acl=' || COALESCE((SELECT string_agg(a, ',' ORDER BY a) FROM unnest(datacl) AS a WHERE a NOT LIKE '=%'),'NULL') FROM pg_database WHERE datname IN ('derp','headscale') ORDER BY 1"
 
 echo "### rolconnlimit/rolconfig cua cac role hien huu (KHONG gom opencode)"
 $PGC -c "SELECT rolname || ' connlimit=' || rolconnlimit || ' config=' || COALESCE(array_to_string(rolconfig,','),'NULL') FROM pg_roles WHERE rolcanlogin AND rolname <> 'opencode' ORDER BY 1"
