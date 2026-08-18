@@ -16,6 +16,16 @@ import { createSql, pingDb } from './db/index.js';
 import { UserStateCache } from './services/user-state.js';
 import { authMiddleware, type AuthFlavor } from './bot/middleware/auth.js';
 import { renderDashboard } from './bot/commands/start.js';
+import {
+  manHinhAgent,
+  manHinhModel,
+  manHinhPhien,
+  manHinhProject,
+  tachModel,
+} from './bot/commands/chon.js';
+import { giaiMa } from './bot/keyboards.js';
+import { OpenCodeClient } from './services/opencode-client.js';
+import { KhoPhien } from './services/sessions.js';
 import { startHealthServer, type HealthState } from './health.js';
 
 type Ctx = Context & AuthFlavor;
@@ -30,6 +40,8 @@ async function main() {
 
   const sql = createSql(cfg);
   const cache = new UserStateCache(sql);
+  const opencode = new OpenCodeClient(cfg);
+  const khoPhien = new KhoPhien(sql, opencode);
 
   const trangThai: HealthState = { db: 'down', botDangPolling: false, batDau: new Date() };
   const health = startHealthServer(cfg.HEALTH_PORT, () => trangThai);
@@ -68,6 +80,140 @@ async function main() {
     }
     const n = await cache.reload();
     await ctx.reply(`♻️ Da nap lai ${n} dong user_state`);
+  });
+
+  /**
+   * Cac lenh chon deu doi DB. Khi DB sap thi noi thang thay vi nem stack trace:
+   * §41 va AC-20 doi Gateway song sot va tra loi ro rang, khong phai im lang.
+   */
+  const doiDb = async (ctx: Ctx): Promise<boolean> => {
+    if (trangThai.db === 'up') return true;
+    await ctx.reply('🔴 Mat ket noi co so du lieu — lenh nay tam thoi khong dung duoc.');
+    return false;
+  };
+
+  const guiManHinh = async (ctx: Ctx, mh: { van: string; banPhim?: unknown }) => {
+    await ctx.reply(mh.van, mh.banPhim ? { reply_markup: mh.banPhim as never } : undefined);
+  };
+
+  bot.command('project', async (ctx) => {
+    if (!(await doiDb(ctx))) return;
+    const state = cache.get(ctx.auth.userId);
+    await guiManHinh(ctx, manHinhProject(await khoPhien.dsProject(), state.currentProjectId));
+  });
+
+  bot.command('sessions', async (ctx) => {
+    if (!(await doiDb(ctx))) return;
+    const state = cache.get(ctx.auth.userId);
+    await guiManHinh(
+      ctx,
+      manHinhPhien(await khoPhien.dsPhien(ctx.auth.userId, cfg.SESSION_PAGE_SIZE), state.currentSessionId),
+    );
+  });
+
+  bot.command('new', async (ctx) => {
+    if (!(await doiDb(ctx))) return;
+    const state = cache.get(ctx.auth.userId);
+    if (state.currentProjectId === null) {
+      await ctx.reply('📁 Hay chon project truoc bang /project.');
+      return;
+    }
+    const phien = await khoPhien.taoPhien({
+      telegramUserId: ctx.auth.userId,
+      projectId: state.currentProjectId,
+      providerId: state.currentProviderId ?? cfg.DEFAULT_PROVIDER,
+      modelId: state.currentModelId ?? cfg.DEFAULT_MODEL,
+      agent: state.currentAgent ?? cfg.DEFAULT_AGENT,
+    });
+    await cache.set(ctx.auth.userId, { currentSessionId: phien.opencodeSessionId });
+    await ctx.reply(`✅ Da tao phien moi: ${phien.opencodeSessionId}`);
+  });
+
+  bot.command('model', async (ctx) => {
+    const state = cache.get(ctx.auth.userId);
+    await guiManHinh(
+      ctx,
+      manHinhModel(await opencode.dsModel(), {
+        providerId: state.currentProviderId,
+        modelId: state.currentModelId,
+      }, 0, cfg.MODEL_PAGE_SIZE),
+    );
+  });
+
+  bot.command('agent', async (ctx) => {
+    const state = cache.get(ctx.auth.userId);
+    await guiManHinh(ctx, manHinhAgent(await opencode.dsAgent(), state.currentAgent));
+  });
+
+  bot.on('callback_query:data', async (ctx) => {
+    const lenh = giaiMa(ctx.callbackQuery.data);
+    if (!lenh) {
+      await ctx.answerCallbackQuery('Nut khong hop le');
+      return;
+    }
+    switch (lenh.viec) {
+      case 'duan': {
+        if (!(await doiDb(ctx))) return;
+        const duAn = await khoPhien.project(BigInt(lenh.thamSo));
+        if (!duAn) {
+          await ctx.answerCallbackQuery('Project khong con ton tai');
+          return;
+        }
+        // Doi project thi phien cu khong con y nghia: no gan voi thu muc khac.
+        // Xoa luon con hon de nguoi dung go tiep vao phien cua project cu.
+        await cache.set(ctx.auth.userId, { currentProjectId: duAn.id, currentSessionId: null });
+        await ctx.answerCallbackQuery(`Da chon ${duAn.name}`);
+        await ctx.reply(`📁 Project: ${duAn.name}
+💬 Phien da dat lai — dung /new de bat dau.`);
+        return;
+      }
+      case 'phien': {
+        if (!(await doiDb(ctx))) return;
+        const phien = await khoPhien.phienCuaNguoiDung(lenh.thamSo, ctx.auth.userId);
+        if (!phien) {
+          await ctx.answerCallbackQuery('Phien khong ton tai hoac khong phai cua ban');
+          return;
+        }
+        await cache.set(ctx.auth.userId, { currentSessionId: phien.opencodeSessionId });
+        await khoPhien.chamMoc(phien.opencodeSessionId);
+        await ctx.answerCallbackQuery('Da chuyen phien');
+        return;
+      }
+      case 'model': {
+        const m = tachModel(lenh.thamSo);
+        if (!m) {
+          await ctx.answerCallbackQuery('Model khong hop le');
+          return;
+        }
+        await cache.set(ctx.auth.userId, {
+          currentProviderId: m.providerID,
+          currentModelId: m.modelID,
+        });
+        await ctx.answerCallbackQuery(`Da chon ${m.modelID}`);
+        return;
+      }
+      case 'trang-model': {
+        const state = cache.get(ctx.auth.userId);
+        const mh = manHinhModel(
+          await opencode.dsModel(),
+          { providerId: state.currentProviderId, modelId: state.currentModelId },
+          Number(lenh.thamSo),
+          cfg.MODEL_PAGE_SIZE,
+        );
+        await ctx.editMessageText(mh.van, { reply_markup: mh.banPhim as never });
+        await ctx.answerCallbackQuery();
+        return;
+      }
+      case 'agent': {
+        await cache.set(ctx.auth.userId, { currentAgent: lenh.thamSo });
+        await ctx.answerCallbackQuery(`Da chon ${lenh.thamSo}`);
+        return;
+      }
+      default:
+        // `khong-lam-gi` (nut so trang) roi vao day. Van phai tra loi callback,
+        // neu khong Telegram hien vong xoay tren nut den khi het han.
+        await ctx.answerCallbackQuery();
+    }
   });
 
   bot.catch((err) => {

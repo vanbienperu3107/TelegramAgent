@@ -76,6 +76,39 @@ export const MIGRATIONS: ReadonlyArray<{ name: string; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(telegram_user_id);
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at)`,
   },
+  {
+    name: '006_opencode_sessions',
+    sql: `
+      CREATE TABLE IF NOT EXISTS opencode_sessions (
+        id BIGSERIAL PRIMARY KEY,
+        opencode_session_id VARCHAR(255) NOT NULL UNIQUE,
+        telegram_user_id BIGINT NOT NULL,
+        project_id BIGINT REFERENCES projects(id),
+        title TEXT,
+        provider_id VARCHAR(255),
+        model_id VARCHAR(255),
+        agent VARCHAR(255),
+        archived BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_user
+        ON opencode_sessions(telegram_user_id, last_used_at DESC)`,
+  },
+  {
+    // Project thu nghiem duy nhat cua V1. Dat o migration chu khong o ma khoi
+    // dong: neu bot tu chen luc chay thi hai ban sao khoi dong cung luc se dua
+    // nhau, con o day thi khoa cua schema_migrations lo viec do.
+    //
+    // Duong dan phai khop WORKSPACE_ROOT/DEFAULT_PROJECT_PATH cua .env. Chung
+    // khong duoc kiem cheo bang may — day la mot cho lech co the xay ra, va
+    // trieu chung se la "agent lam viec o thu muc trong".
+    name: '007_project_thu_nghiem',
+    sql: `
+      INSERT INTO projects (name, project_path, description)
+      VALUES ('sandbox', '/workspace/opencode-sandbox', 'Project thu nghiem duy nhat cua V1')
+      ON CONFLICT (name) DO NOTHING`,
+  },
 ];
 
 export async function chayMigration(sql: Sql, log: { info: (o: object, m: string) => void }) {

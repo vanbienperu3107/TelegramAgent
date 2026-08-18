@@ -2,7 +2,7 @@
  * Cau hinh phai FAIL FAST. Moi test o day gan voi mot ca hong im lang cu the.
  */
 import { describe, expect, it } from 'vitest';
-import { loadConfig, kiemBatDangThuc, type Config } from '../../src/config.js';
+import { loadConfig, kiemBatDangThuc, schema, type Config } from '../../src/config.js';
 
 const HOP_LE: Record<string, string> = {
   TELEGRAM_BOT_TOKEN: '123:AA-token',
@@ -29,10 +29,24 @@ const HOP_LE: Record<string, string> = {
   MAX_OUTPUT_ARTIFACT_MB: '45',
   APPROVAL_TIMEOUT_MIN: '30',
   TASK_MAX_DURATION_MIN: '30',
+  MODEL_PAGE_SIZE: '8',
+  SESSION_PAGE_SIZE: '8',
+  PROJECT_PAGE_SIZE: '8',
   LOG_LEVEL: 'info',
   NODE_ENV: 'test',
   HEALTH_PORT: '8790',
 };
+
+describe('fixture', () => {
+  it('HOP_LE phu du moi bien schema doi', () => {
+    // Fixture lech khoi schema la mot lop loi rieng: moi test khac trong file nay
+    // deu do cung mot luc voi cung mot thong bao, va thong bao do chi ve bien
+    // MOI THEM chu khong ve cai test dang kiem. Da xay ra that khi them ba bien
+    // phan trang.
+    const thieu = Object.keys(schema.shape).filter((k) => !(k in HOP_LE));
+    expect(thieu, `fixture thieu: ${thieu.join(', ')}`).toEqual([]);
+  });
+});
 
 describe('loadConfig', () => {
   it('nhan cau hinh hop le', () => {
