@@ -144,3 +144,24 @@ def test_tunnel_co_du_bon_goi():
     text = TUNNEL.read_text(encoding="utf-8")
     for pkg in ("autossh", "openssh-client", "netcat-openbsd", "postgresql-client"):
         assert pkg in text, "thieu %s" % pkg
+
+
+def test_thu_muc_duoc_gan_volume_phai_ton_tai_voi_dung_chu_so_huu():
+    """Moi duong dan ma compose gan named volume vao PHAI duoc tao san trong image
+    voi dung chu so huu.
+
+    Khi Docker tao mot named volume rong, no gieo noi dung tu duong dan tuong ung
+    trong image — KE CA chu so huu. Neu duong dan do khong ton tai, Docker tao mot
+    thu muc rong thuoc root:root, va tien trinh chay bang uid khac khong ghi duoc.
+
+    Trieu chung khong he chi ve quyen: container khong bao gio `healthy` va deploy
+    dung o "dependency failed to start". Da xay ra dung nhu vay ngay 2026-08-18,
+    ngay lan dau them volume cho du lieu OpenCode.
+    """
+    duong_dan = "/home/node/.local/share/opencode"
+    noi_dung = (ROOT / "docker" / "Dockerfile.opencode-server").read_text(encoding="utf-8")
+    lenh = dong_lenh_dockerfile(noi_dung)
+    tao = [d for d in lenh if "mkdir" in d and duong_dan in d]
+    assert tao, "Dockerfile phai `mkdir -p %s`" % duong_dan
+    chown = [d for d in lenh if "chown" in d and "/home/node/.local" in d]
+    assert chown, "Dockerfile phai `chown` thu muc du lieu ve user chay tien trinh"

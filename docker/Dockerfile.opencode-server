@@ -34,6 +34,18 @@ COPY scripts/verify-opencode-config.cjs /opt/verify-opencode-config.cjs
 
 # Thu muc cau hinh phai ton tai TRUOC khi compose bind-mount mot FILE vao trong no.
 RUN mkdir -p /home/node/.config/opencode && chown -R node:node /home/node/.config
+
+# Thu muc du lieu (phien, lich su, quyen da duyet 'always') PHAI ton tai trong
+# image voi dung chu so huu, du compose se gan volume de len.
+#
+# Ly do: khi Docker tao mot named volume RONG, no gieo noi dung tu duong dan
+# tuong ung trong image — KE CA CHU SO HUU. Neu duong dan do khong ton tai,
+# Docker tao mot thu muc rong thuoc root:root, va tien trinh chay bang uid 1000
+# khong ghi duoc. Trieu chung khong he chi ve quyen: container don gian la khong
+# bao gio `healthy`, va deploy dung o "dependency failed to start".
+#
+# Da xay ra dung nhu vay ngay 2026-08-18, ngay lan dau them volume.
+RUN mkdir -p /home/node/.local/share/opencode && chown -R node:node /home/node/.local
 # git tu choi lam viec trong repo thuoc user khac ("dubious ownership"); workspace
 # duoc clone bang root tren host roi chown 1000.
 RUN git config --system --add safe.directory /workspace \
