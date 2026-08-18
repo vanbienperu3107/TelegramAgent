@@ -45,7 +45,7 @@ jobs:
           # Vong hai: chup luong su kien trong luc mot prompt THAT dang chay.
           # Vong mot chi bat duoc `server.connected` vi luc do khong co gi xay ra,
           # ma do moi la thu §17.2 doi: mot luot hoi-dap phat ra su kien nao, theo
-          # thu tu nao. Mat khoang 90 giay.
+          # thu tu nao. Mat khoang 150 giay.
           scp -P "$SSH_PORT" -i k4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 \
             scripts/vpn4/probe-opencode-events.sh "$SSH_USER@$SSH_HOST_VPN4:/tmp/probe-events.sh"
           $SSH4 "bash /tmp/probe-events.sh" > probe-events.txt 2>&1 || true
