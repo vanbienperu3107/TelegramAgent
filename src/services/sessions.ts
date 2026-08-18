@@ -184,6 +184,30 @@ export class KhoPhien {
         AND (title IS NULL OR title = '' OR title LIKE 'New session -%')`;
   }
 
+  /**
+   * Luu tru moi phien cua nguoi dung ma OpenCode KHONG con biet toi.
+   *
+   * Doi chieu voi `GET /session` thay vi xoa theo tuoi: mot phien cu ma van song
+   * thi van dung duoc, con mot phien vua tao 10 giay truoc ma OpenCode da quen
+   * thi vo dung. Tuoi khong noi len dieu gi; su ton tai thi co.
+   *
+   * Tra ve so phien da don. Loi goi OpenCode duoc de NEM LEN: don nham het phien
+   * vi mot lan mang chap chon thi te hon nhieu so voi bao loi va khong lam gi.
+   */
+  async donPhienDaChet(telegramUserId: bigint): Promise<number> {
+    const conSong = new Set((await this.client.dsSession()).map((s) => s.id));
+    const cuaTa = await this.dsPhien(telegramUserId, 200);
+    const chet = cuaTa.filter((p) => !conSong.has(p.opencodeSessionId));
+    if (chet.length === 0) return 0;
+
+    const rows = await this.sql<{ opencode_session_id: string }[]>`
+      UPDATE opencode_sessions SET archived = TRUE
+      WHERE telegram_user_id = ${String(telegramUserId)}
+        AND opencode_session_id IN ${this.sql(chet.map((p) => p.opencodeSessionId))}
+      RETURNING opencode_session_id`;
+    return rows.length;
+  }
+
   async chamMoc(opencodeSessionId: string): Promise<void> {
     await this.sql`
       UPDATE opencode_sessions SET last_used_at = NOW()

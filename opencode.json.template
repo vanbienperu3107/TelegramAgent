@@ -1,22 +1,42 @@
 {
   "$schema": "https://opencode.ai/config.json",
-
-  "//": "KHUON. sync-models.js chen khoi provider.cliproxy.models roi ghi ra opencode.json.",
-  "//permission": "13 khoa, khong thieu khong thua. Khoa khong dat se chay theo mac dinh cua OpenCode — do la lo hong im lang: mot tool nang co the chay ma khong hien nut Approve nao. verify-opencode-config.js kiem du 13 khoa va kiem bang bash khop chinh xac.",
-  "//lsp": "V1 tat LSP: ngan sach 512 MB cua opencode-server khong cong noi 150-400 MB cua typescript-language-server. permission.lsp la quyen cua TOOL, khoi lsp duoi day moi la cong tac tat SERVER — hai thu khac nhau.",
-
-  "provider": {
-    "cliproxy": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "CLIProxy (vpn4)",
-      "options": {
-        "baseURL": "{env:CLIPROXY_BASE_URL}",
-        "apiKey": "{env:CLIPROXY_API_KEY}"
-      },
-      "models": {}
+  "theme": "tokyonight",
+  "instructions": ["AGENTS.md"],
+  "mcp": {
+    "context7": {
+      "type": "local",
+      "command": ["npx", "-y", "@upstash/context7-mcp"],
+      "enabled": true,
+      "timeout": 15000
+    },
+    "exa": {
+      "type": "local",
+      "command": ["npx", "-y", "exa-mcp-server"],
+      "enabled": true,
+      "timeout": 15000,
+      "environment": {
+        "EXA_API_KEY": "{env:EXA_API_KEY}"
+      }
+    },
+    "brave": {
+      "type": "local",
+      "command": ["npx", "-y", "@brave/brave-search-mcp-server", "--transport", "stdio"],
+      "enabled": false,
+      "timeout": 15000,
+      "environment": {
+        "BRAVE_API_KEY": "{env:BRAVE_API_KEY}"
+      }
+    },
+    "tavily": {
+      "type": "remote",
+      "url": "https://mcp.tavily.com/mcp/?tavilyApiKey={env:TAVILY_API_KEY}",
+      "enabled": true,
+      "timeout": 15000,
+      "headers": {
+        "DEFAULT_PARAMETERS": "{\"search_depth\":\"basic\",\"max_results\":3,\"include_answer\":false,\"include_raw_content\":false,\"include_images\":false}"
+      }
     }
   },
-
   "permission": {
     "read": "allow",
     "grep": "allow",
@@ -26,8 +46,12 @@
     "question": "allow",
     "task": "ask",
     "skill": "ask",
-    "webfetch": "ask",
-    "websearch": "ask",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "context7_*": "allow",
+    "exa_*": "allow",
+    "brave_*": "allow",
+    "tavily_*": "allow",
     "external_directory": "ask",
     "doom_loop": "deny",
     "bash": {
@@ -44,8 +68,113 @@
       "git reset --hard*": "deny"
     }
   },
-
-  "lsp": {
-    "typescript": { "disabled": true }
+  "provider": {
+    "cliproxy": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "CLIProxy (vpn4)",
+      "options": {
+        "baseURL": "{env:CLIPROXY_BASE_URL}",
+        "apiKey": "{env:CLIPROXY_API_KEY}"
+      },
+      "models": {
+        "claude-opus-5": {
+          "name": "claude-opus-5",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-opus-4-8": {
+          "name": "claude-opus-4-8",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-opus-4-7": {
+          "name": "claude-opus-4-7",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-opus-4-6": {
+          "name": "claude-opus-4-6",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-opus-4-5-20251101": {
+          "name": "claude-opus-4-5-20251101",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-opus-4-1-20250805": {
+          "name": "claude-opus-4-1-20250805",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-opus-4-20250514": {
+          "name": "claude-opus-4-20250514",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-sonnet-5": {
+          "name": "claude-sonnet-5",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-sonnet-4-6": {
+          "name": "claude-sonnet-4-6",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-sonnet-4-5-20250929": {
+          "name": "claude-sonnet-4-5-20250929",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-sonnet-4-20250514": {
+          "name": "claude-sonnet-4-20250514",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-3-7-sonnet-20250219": {
+          "name": "claude-3-7-sonnet-20250219",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-haiku-4-5-20251001": {
+          "name": "claude-haiku-4-5-20251001",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-3-5-haiku-20241022": {
+          "name": "claude-3-5-haiku-20241022",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-fable-5": {
+          "name": "claude-fable-5",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "gpt-5.6-sol": {
+          "name": "gpt-5.6-sol",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "gpt-5.6-luna": {
+          "name": "gpt-5.6-luna",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "gpt-5.6-terra": {
+          "name": "gpt-5.6-terra",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "gpt-5.5": {
+          "name": "gpt-5.5",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "gpt-5.4": {
+          "name": "gpt-5.4",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "gpt-5.4-mini": {
+          "name": "gpt-5.4-mini",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "gpt-5.3-codex-spark": {
+          "name": "gpt-5.3-codex-spark",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "codex-auto-review": {
+          "name": "codex-auto-review"
+        },
+        "gpt-image-2": {
+          "name": "gpt-image-2"
+        },
+        "gpt-image-1.5": {
+          "name": "gpt-image-1.5"
+        }
+      }
+    }
   }
 }
