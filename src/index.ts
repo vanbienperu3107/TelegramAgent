@@ -17,6 +17,7 @@ import { UserStateCache } from './services/user-state.js';
 import { authMiddleware, type AuthFlavor } from './bot/middleware/auth.js';
 import { renderDashboard } from './bot/commands/start.js';
 import { DANH_SACH_LENH, moiTenCua, renderHelp, renderLenhLa } from './bot/commands/help.js';
+import { vePatch, veTomTatDiff } from './bot/commands/diff.js';
 import {
   manHinhAgent,
   manHinhModel,
@@ -292,6 +293,30 @@ async function main() {
     log,
     banPhimDuyet,
   );
+
+  /** Doc phien hien tai, hoac tra loi ro rang neu chua co. Dung chung cho /diff va /patch. */
+  const phienHienTai = async (ctx: Ctx): Promise<string | null> => {
+    const state = cache.get(ctx.auth.userId);
+    if (state.currentSessionId === null) {
+      await ctx.reply('💬 Chua co phien lam viec. Dung /new de bat dau.');
+      return null;
+    }
+    return state.currentSessionId;
+  };
+
+  bot.command(moiTenCua('diff'), async (ctx) => {
+    const phien = await phienHienTai(ctx);
+    if (phien === null) return;
+    await ctx.reply(veTomTatDiff(await opencode.diff(phien)));
+  });
+
+  bot.command(moiTenCua('patch'), async (ctx) => {
+    const phien = await phienHienTai(ctx);
+    if (phien === null) return;
+    for (const manh of vePatch(await opencode.diff(phien))) {
+      await ctx.reply(manh, { parse_mode: 'Markdown' });
+    }
+  });
 
   bot.command(moiTenCua('abort'), async (ctx) => {
     if (!(await doiDb(ctx))) return;

@@ -9,6 +9,7 @@
 import { Buffer } from 'node:buffer';
 
 import type { Config } from '../config.js';
+import type { FileDiff } from '../bot/commands/diff.js';
 
 /** Phien do `POST /session` tao ra. Chi khai nhung truong ta thuc su dung. */
 export interface Session {
@@ -223,9 +224,14 @@ export class OpenCodeClient {
     return Array.isArray(d) ? d : [];
   }
 
-  /** Diff cua phien. Endpoint co that — khong can `git diff` nhu ban plan cu du lieu. */
-  async diff(sessionID: string): Promise<unknown[]> {
-    const d = await this.goiJson<unknown[]>(`/session/${sessionID}/diff`);
+  /**
+   * Diff cua phien. Endpoint co that — khong can `git diff` nhu ban plan cu du lieu.
+   *
+   * Kieu tra ve theo `SnapshotFileDiff` cua dac ta: chi `additions`/`deletions`
+   * la bat buoc, con `file`/`patch`/`status` deu co the vang.
+   */
+  async diff(sessionID: string): Promise<FileDiff[]> {
+    const d = await this.goiJson<FileDiff[]>(`/session/${sessionID}/diff`);
     return Array.isArray(d) ? d : [];
   }
 
