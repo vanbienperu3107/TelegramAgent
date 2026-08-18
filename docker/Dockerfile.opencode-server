@@ -14,11 +14,16 @@ FROM node:22-bookworm-slim
 #   openssh-client — git qua ssh
 #   ripgrep      — tool grep cua OpenCode
 #   ca-certificates — goi cliproxy qua mang edge
+#   curl         — healthcheck cua compose. node:22-bookworm-slim KHONG co san
+#                  wget lan curl; healthcheck dau tien dung wget va container
+#                  khong bao gio `healthy`, keo theo gateway khong bao gio khoi
+#                  dong vi `condition: service_healthy`. Alpine co busybox wget
+#                  san nen gateway va pg-tunnel khong gap loi nay — de nham vi vay.
 #   tini         — tien trinh con (bash tool, git) khong thanh zombie khi agent
 #                  huy task giua chung
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      git openssh-client ripgrep ca-certificates tini \
+      git openssh-client ripgrep ca-certificates curl tini \
  && rm -rf /var/lib/apt/lists/*
 
 ARG OPENCODE_VERSION
