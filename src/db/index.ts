@@ -16,7 +16,7 @@ export function createSql(cfg: Config): Sql {
     max: cfg.PG_POOL_MAX,
     idle_timeout: cfg.PG_IDLE_TIMEOUT_S === 0 ? undefined : cfg.PG_IDLE_TIMEOUT_S,
     connect_timeout: cfg.PG_CONNECT_TIMEOUT_S,
-    connection: { statement_timeout: String(cfg.PG_STATEMENT_TIMEOUT_MS) },
+    connection: { statement_timeout: cfg.PG_STATEMENT_TIMEOUT_MS },
     // Bot ca nhan: khong can prepare cache lon, va prepare lam phuc tap viec
     // hoa giai khi tunnel dut giua chung.
     prepare: false,
