@@ -8,7 +8,88 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { boDanhDau, markdownSangHtml, thoatHtml } from '../../src/bot/dinh-dang.js';
+import {
+  RONG_TOI_DA_DONG_MA,
+  boDanhDau,
+  markdownSangHtml,
+  ngatDongMa,
+  rutAnh,
+  thoatHtml,
+} from '../../src/bot/dinh-dang.js';
+
+describe('anh Markdown', () => {
+  it('KHONG bo lai dau cham than phia truoc', () => {
+    // Loi that 2026-08-18: `![alt](url)` bi lien ket thuong khop phan trong, va
+    // nguoi dung nhin thay "!Duong pho Ha Noi mua thu" voi mot lien ket mau xanh.
+    const ra = markdownSangHtml('![Duong pho Ha Noi](https://a.vn/x.jpg)');
+    expect(ra).not.toContain('!');
+    expect(ra).toContain('href="https://a.vn/x.jpg"');
+  });
+
+  it('van tao lien ket bam duoc, de con duong lui khi Telegram tu choi anh', () => {
+    expect(markdownSangHtml('![x](https://a.vn/x.jpg)')).toContain('<a href=');
+  });
+
+  it('rut duoc danh sach anh de gui that', () => {
+    const van = '![Anh mot](https://a.vn/1.jpg)\n![Anh hai](https://a.vn/2.jpg)';
+    expect(rutAnh(van)).toEqual([
+      { alt: 'Anh mot', url: 'https://a.vn/1.jpg' },
+      { alt: 'Anh hai', url: 'https://a.vn/2.jpg' },
+    ]);
+  });
+
+  it('bo anh trung URL — nhac hai lan thi chi gui mot', () => {
+    expect(rutAnh('![a](https://a.vn/1.jpg) ![b](https://a.vn/1.jpg)')).toHaveLength(1);
+  });
+
+  it('gioi han so anh de khong bien mot cau tra loi thanh 20 tin nhan', () => {
+    const nhieu = Array.from({ length: 30 }, (_, i) => `![a${i}](https://a.vn/${i}.jpg)`).join('\n');
+    expect(rutAnh(nhieu).length).toBeLessThanOrEqual(5);
+  });
+
+  it('bo qua URL khong phai http/https', () => {
+    expect(rutAnh('![a](data:image/png;base64,xxx)')).toEqual([]);
+  });
+});
+
+describe('ngat dong trong khoi ma cho vua man hinh', () => {
+  it('ngat dong dai hon nguong', () => {
+    const dai = 'SELECT ' + 'cot_rat_dai, '.repeat(12) + 'het';
+    for (const d of ngatDongMa(dai).split('\n')) {
+      expect(d.length).toBeLessThanOrEqual(RONG_TOI_DA_DONG_MA + 2);
+    }
+  });
+
+  it('CHI ngat tai khoang trang — khong cat doi mot tu', () => {
+    // Mot ten ham hay chuoi ket noi bi cat doi thi nguoi dung chep ra se sai ma
+    // khong nhan ra.
+    const dai = 'a '.repeat(40) + 'tu_cuoi_cung';
+    expect(ngatDongMa(dai)).toContain('tu_cuoi_cung');
+  });
+
+  it('GIU NGUYEN dong khong co khoang trang nao', () => {
+    // URL dai hay chuoi base64: cat chung la lam hong du lieu.
+    const url = 'https://vi-du.vn/' + 'x'.repeat(200);
+    expect(ngatDongMa(url)).toBe(url);
+  });
+
+  it('giu nguyen dong ngan', () => {
+    expect(ngatDongMa('SELECT 1;')).toBe('SELECT 1;');
+  });
+
+  it('KHONG ngat khoi ma cua ngon ngu nhay cam thut le', () => {
+    // Them mot dong moi giua khoi Python lam hong chinh cu phap.
+    const py = '```python\n' + 'def f():\n    return ' + 'x + '.repeat(30) + '1\n```';
+    const ra = markdownSangHtml(py);
+    expect(ra).toContain('x + '.repeat(30) + '1');
+  });
+
+  it('CO ngat khoi ma cua SQL', () => {
+    const sql = '```sql\nSELECT ' + 'cot_dai, '.repeat(15) + '1;\n```';
+    const than = markdownSangHtml(sql);
+    expect(than.split('\n').length).toBeGreaterThan(3);
+  });
+});
 
 describe('thoat ky tu HTML', () => {
   it('thoat & < > — ba ky tu duy nhat Telegram doi', () => {

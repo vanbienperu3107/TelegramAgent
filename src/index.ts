@@ -27,7 +27,8 @@ import {
 } from './bot/commands/chon.js';
 import { banPhimDuyet, giaiMa } from './bot/keyboards.js';
 import { boDanhDau, markdownSangHtml } from './bot/dinh-dang.js';
-import { dungFilePart, kiemKichThuoc, vanMacDinh, type DinhKem } from './bot/dinh-kem.js';
+import { doanMime, dungFilePart, kiemKichThuoc, vanMacDinh, type DinhKem } from './bot/dinh-kem.js';
+import { docTep, ghepVaoPrompt } from './bot/doc-tep.js';
 import { moTaLoi } from './bot/loi.js';
 import { OpenCodeClient } from './services/opencode-client.js';
 import { KhoPhien } from './services/sessions.js';
@@ -330,6 +331,13 @@ async function main() {
           });
         }, van);
       },
+      guiAnh: async (chatId, url, chuThich) => {
+        // Chu thich cua Telegram gioi han 1024 ky tu; `alt` cua agent co the dai
+        // hon the va lam ca loi goi bi tu choi.
+        await bot.api.sendPhoto(Number(chatId), url, {
+          ...(chuThich ? { caption: chuThich.slice(0, 1000) } : {}),
+        });
+      },
     },
     log,
     banPhimDuyet,
@@ -492,7 +500,7 @@ async function main() {
       await ctx.reply(`📎 Khong tai duoc tep tu Telegram (HTTP ${res.status}).`);
       return null;
     }
-    return dungFilePart(k, Buffer.from(await res.arrayBuffer()));
+    return Buffer.from(await res.arrayBuffer());
   };
 
   /**
@@ -529,12 +537,40 @@ async function main() {
       return;
     }
 
-    const part = await layDinhKem(ctx, k);
-    if (!part) return; // layDinhKem da tra loi ly do cu the
+    const byte = await layDinhKem(ctx, k);
+    if (!byte) return; // layDinhKem da tra loi ly do cu the
 
     // Chu thich cua nguoi dung la cau hoi that; khong co thi dung cau nhac mac
     // dinh — `parts` phai co phan van ban de model biet lam gi voi tep.
-    await giaoViecChoAgent(ctx, ctx.message.caption?.trim() || vanMacDinh(k), [part]);
+    const cauHoi = ctx.message.caption?.trim() || vanMacDinh(k);
+    const mime = doanMime(k);
+
+    /**
+     * Model chi "nhin" duoc mot so dinh dang. Voi cac dinh dang con lai, gui
+     * nguyen tep la gui vao hu khong: model BO QUA IM LANG roi tra loi bang ngu
+     * canh truoc do, va nguoi dung tuong no da doc.
+     *
+     * Da xay ra that 2026-08-18: mot tep .docx kem cau "Doc thong tin trong file"
+     * -> bot tra loi sau MOT giay ve mot chu de hoan toan khac.
+     */
+    const doc = docTep(byte, mime, k.tenTep);
+
+    if (doc.loai === 'khong-doc-duoc') {
+      await ctx.reply(
+        `📎 Khong doc duoc tep${k.tenTep ? ` "${k.tenTep}"` : ''}: ${doc.lyDo}.\n` +
+          'Hien doc duoc: anh, PDF, va cac tep van ban (txt, md, csv, json, ma nguon, .docx).',
+      );
+      return;
+    }
+
+    if (doc.loai === 'van-ban') {
+      // Nhung THANG noi dung vao cau hoi thay vi gui tep: chac chan model doc
+      // duoc, va khong phu thuoc vao viec no co ho tro dinh dang do hay khong.
+      await giaoViecChoAgent(ctx, ghepVaoPrompt(cauHoi, k.tenTep, doc.van, doc.batBot));
+      return;
+    }
+
+    await giaoViecChoAgent(ctx, cauHoi, [dungFilePart(k, byte)]);
   });
 
   /**
