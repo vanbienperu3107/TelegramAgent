@@ -84,10 +84,16 @@ describe('ngat dong trong khoi ma cho vua man hinh', () => {
     expect(ra).toContain('x + '.repeat(30) + '1');
   });
 
-  it('CO ngat khoi ma cua SQL', () => {
+  it('CO ngat khoi ma cua SQL, va khong dong nao con tran', () => {
+    // Do dung thu can do: khong phai "co nhieu dong hon" (mot con so tuy y) ma
+    // "khong dong nao vuot nguong" — do moi la dieu kien de vua man hinh.
     const sql = '```sql\nSELECT ' + 'cot_dai, '.repeat(15) + '1;\n```';
-    const than = markdownSangHtml(sql);
-    expect(than.split('\n').length).toBeGreaterThan(3);
+    const ra = markdownSangHtml(sql);
+    const trong = ra.replace(/<[^>]+>/g, '');
+    expect(trong.split('\n').length).toBeGreaterThan(1); // co ngat that
+    for (const d of trong.split('\n')) {
+      expect(d.length).toBeLessThanOrEqual(RONG_TOI_DA_DONG_MA + 2);
+    }
   });
 });
 
