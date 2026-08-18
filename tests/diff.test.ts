@@ -10,14 +10,27 @@ import { describe, expect, it } from 'vitest';
 
 import { vePatch, veTomTatDiff, type FileDiff } from '../src/bot/commands/diff.js';
 
-const f = (ghiDe: Partial<FileDiff> = {}): FileDiff => ({
-  file: 'src/a.ts',
-  patch: '@@ -1 +1 @@\n-cu\n+moi',
-  additions: 1,
-  deletions: 1,
-  status: 'modified',
-  ...ghiDe,
-});
+/**
+ * Dung mot FileDiff, co the BO HAN mot so truong.
+ *
+ * Phai bo han chu khong dat `undefined`: voi exactOptionalPropertyTypes, "truong
+ * co gia tri undefined" va "khong co truong" la hai kieu khac nhau — va cai ta
+ * can mo phong la cai thu hai, vi do moi la thu server that gui ve.
+ */
+type TruongTuyChon = 'file' | 'patch' | 'status';
+
+function f(ghiDe: Partial<FileDiff> = {}, bo: TruongTuyChon[] = []): FileDiff {
+  const ra: FileDiff = {
+    file: 'src/a.ts',
+    patch: '@@ -1 +1 @@\n-cu\n+moi',
+    additions: 1,
+    deletions: 1,
+    status: 'modified',
+    ...ghiDe,
+  };
+  for (const k of bo) delete ra[k];
+  return ra;
+}
 
 describe('tom tat diff', () => {
   it('noi ro khi chua sua gi, khong tra danh sach rong', () => {
@@ -37,13 +50,13 @@ describe('tom tat diff', () => {
   it('KHONG in "undefined" khi thieu ten file', () => {
     // `file` khong bat buoc theo dac ta. Day la cach de nhat de sinh ra mot dong
     // vo nghia tren man hinh nguoi dung.
-    const van = veTomTatDiff([f({ file: undefined })]);
+    const van = veTomTatDiff([f({}, ['file'])]);
     expect(van).not.toContain('undefined');
     expect(van).toMatch(/khong ro ten file/i);
   });
 
   it('thieu status thi coi la sua, khong de bieu tuong trong', () => {
-    const van = veTomTatDiff([f({ status: undefined })]);
+    const van = veTomTatDiff([f({}, ['status'])]);
     expect(van).not.toContain('undefined');
     expect(van).toContain('src/a.ts');
   });
@@ -61,7 +74,7 @@ describe('tom tat diff', () => {
 
 describe('patch', () => {
   it('noi ro khi khong co noi dung patch nao', () => {
-    expect(vePatch([f({ patch: undefined })])[0]).toMatch(/khong co noi dung patch/i);
+    expect(vePatch([f({}, ['patch'])])[0]).toMatch(/khong co noi dung patch/i);
     expect(vePatch([f({ patch: '   ' })])[0]).toMatch(/khong co noi dung patch/i);
   });
 
@@ -87,7 +100,7 @@ describe('patch', () => {
   });
 
   it('bo qua file khong co patch nhung van hien file co patch', () => {
-    const manh = vePatch([f({ file: 'khong.ts', patch: undefined }), f({ file: 'co.ts' })]);
+    const manh = vePatch([f({ file: 'khong.ts' }, ['patch']), f({ file: 'co.ts' })]);
     expect(manh).toHaveLength(1);
     expect(manh[0]).toContain('co.ts');
   });
