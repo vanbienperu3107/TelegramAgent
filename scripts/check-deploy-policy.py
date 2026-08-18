@@ -50,8 +50,27 @@ def assigned_names(script):
     return out
 
 
+def bo_comment(script):
+    """Bo chu thich shell truoc khi tim tham chieu bien.
+
+    Mot dau $ trong chu thich khong bao gio duoc khai trien, nen bao loi o do la
+    sai. Va no khong phai kha nang ly thuyet: lop loi 'tu to giac' — chu thich MO
+    TA mot mau bi cam nen chua luon mau do — da lam hong CI nhieu lan trong repo
+    nay (xem tests/helpers.py). Ngay dong chu thich giai thich VI SAO khong duoc
+    viet $VAR o mot cho nao do cung se bi chinh phep kiem nay bat.
+
+    Chi bo chu thich CA DONG (dong bat dau bang #). Khong dung cach bo tu dau # den
+    het dong o giua cau lenh: '#' co the nam trong chuoi hoac trong ${VAR#tien_to},
+    va cat nham o do thi lam mat tham chieu bien that.
+    """
+    return "\n".join(
+        "" if dong.lstrip().startswith("#") else dong for dong in script.splitlines()
+    )
+
+
 def used_names(script):
     """Ten bien duoc DOC trong script: $VAR va ${VAR...}."""
+    script = bo_comment(script)
     out = set()
     for m in re.finditer(r"\$\{([A-Za-z_][A-Za-z0-9_]*)[:\-}]", script):
         out.add(m.group(1))
