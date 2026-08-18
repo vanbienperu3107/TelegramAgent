@@ -66,6 +66,13 @@ export const schema = z.object({
   APPROVAL_TIMEOUT_MIN: positiveInt.pipe(z.number().min(1)),
   TASK_MAX_DURATION_MIN: positiveInt.pipe(z.number().min(1)),
 
+  // Kich thuoc trang cua cac ban phim inline. Telegram tu choi ban phim qua lon,
+  // va phep do thay CLIProxy khai hon 20 model — nen day la gioi han that, khong
+  // phai tham so trang tri.
+  MODEL_PAGE_SIZE: positiveInt.pipe(z.number().min(1).max(20)),
+  SESSION_PAGE_SIZE: positiveInt.pipe(z.number().min(1).max(20)),
+  PROJECT_PAGE_SIZE: positiveInt.pipe(z.number().min(1).max(20)),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']),
   NODE_ENV: z.string().min(1),
   HEALTH_PORT: port,
