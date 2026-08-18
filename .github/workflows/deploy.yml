@@ -213,9 +213,15 @@ jobs:
             # cau hinh dang chay. Phep thu khoi chi co gia tri khi moi truong cua
             # no giong het cai ma compose dua cho opencode-server.
             docker run --rm --network edge --env-file /opt/opencode/.env.opencode -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" opencode run --model cliproxy/claude-opus-5 "Viet mot cau tieng Viet co dau ve thoi tiet" > /tmp/smoke-$GITHUB_RUN_ID.txt
-            # Bang chung baseURL that su den duoc tien trinh server, khong chi den
-            # duoc `docker run` cua buoc nay.
-            docker exec opencode-server sh -c 'test -n "$CLIPROXY_BASE_URL"'
+            # Bang chung baseURL that su den duoc tien trinh server dang chay,
+            # khong chi den duoc `docker run` cua buoc nay.
+            #
+            # `printenv` chu khong phai `sh -c 'test -n "$VAR"'`: dang sau co dau $
+            # thuoc ve shell BEN TRONG container, nhung nhin tu ngoai thi
+            # check-deploy-policy.py khong phan biet duoc va bao la bien khong co
+            # nguon — dung, vi do chinh la lop loi no duoc viet ra de chan.
+            # printenv thoat ra 1 khi bien khong dat, dung nhu ta can.
+            docker exec opencode-server printenv CLIPROXY_BASE_URL > /dev/null
             python3 scripts/check-utf8.py /tmp/smoke-$GITHUB_RUN_ID.txt
             bash scripts/vpn4/snapshot-vpn4.sh > /tmp/after-$GITHUB_RUN_ID.txt
             diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/after-$GITHUB_RUN_ID.txt
