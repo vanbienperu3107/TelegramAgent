@@ -80,6 +80,13 @@ jobs:
           OPENCODE_PG_PASSWORD: gia-lap
           OPENCODE_SERVER_PASSWORD: gia-lap
           CLIPROXY_API_KEY: gia-lap
+          # Ba khoa MCP. Gia tri gia — buoc nay chi kiem HOP DONG sinh file env,
+          # khong goi ra ngoai. Thieu chung thi gen-env.py dung ngay, dung nhu no
+          # duoc thiet ke: mot bien thieu tro thanh chuoi rong o may that thi
+          # MCP server tu choi xac thuc ma khong bao gi.
+          EXA_API_KEY: gia-lap
+          BRAVE_API_KEY: gia-lap
+          TAVILY_API_KEY: gia-lap
         run: python3 scripts/gen-env.py
 
       - name: Compose phai parse duoc voi bien that
