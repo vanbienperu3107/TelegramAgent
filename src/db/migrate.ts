@@ -109,6 +109,47 @@ export const MIGRATIONS: ReadonlyArray<{ name: string; sql: string }> = [
       VALUES ('sandbox', '/workspace/opencode-sandbox', 'Project thu nghiem duy nhat cua V1')
       ON CONFLICT (name) DO NOTHING`,
   },
+  {
+    // Mot task = mot luot hoi-dap. `telegram_status_message_id` la tin nhan ta
+    // sua lien tuc de hien tien do; giu no trong DB chu khong chi trong RAM vi
+    // Gateway co the bi khoi dong lai giua luot chay (mem_limit 512m), va luc do
+    // ta van phai sua duoc dung tin nhan do thay vi bo lai mot dong "dang chay"
+    // treo vinh vien tren man hinh nguoi dung.
+    name: '008_tasks',
+    sql: `
+      CREATE TABLE IF NOT EXISTS tasks (
+        id BIGSERIAL PRIMARY KEY,
+        telegram_user_id BIGINT NOT NULL,
+        telegram_chat_id BIGINT NOT NULL,
+        telegram_status_message_id BIGINT,
+        opencode_session_id VARCHAR(255) NOT NULL,
+        opencode_message_id VARCHAR(255) NOT NULL,
+        trang_thai VARCHAR(30) NOT NULL DEFAULT 'running',
+        prompt TEXT NOT NULL,
+        ket_qua TEXT,
+        loi TEXT,
+        bat_dau TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ket_thuc TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_tasks_user_trangthai
+        ON tasks(telegram_user_id, trang_thai);
+      CREATE INDEX IF NOT EXISTS idx_tasks_message
+        ON tasks(opencode_message_id)`,
+  },
+  {
+    // KHOA MOT TASK MOI NGUOI, thi hanh bang chinh CSDL chu khong bang bien trong
+    // RAM. Bien RAM khong du: hai ban sao Gateway (luc deploy chong lan nhau) se
+    // moi ban giu mot bien rieng va cung cho phep mot task — nguoi dung co hai
+    // task song song, hai tien do ghi de len nhau.
+    //
+    // Chi so RIENG PHAN: chi rang buoc cac dong dang chay, nen lich su task cu
+    // khong can dong tai.
+    name: '009_khoa_mot_task',
+    sql: `
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_task_dang_chay
+        ON tasks(telegram_user_id)
+        WHERE trang_thai IN ('running', 'waiting_permission')`,
+  },
 ];
 
 export async function chayMigration(sql: Sql, log: { info: (o: object, m: string) => void }) {
