@@ -37,6 +37,7 @@ function dungBo(ghiDe: {
     suaTinNhan: vi.fn(
       async (_chat: bigint, _msg: bigint, _van: string, _banPhim?: unknown) => undefined,
     ),
+    guiAnh: vi.fn(async (_chat: bigint, _url: string, _chuThich?: string) => undefined),
   };
   const kho = {
     taoTask: vi.fn(async () => taskGia()),
@@ -389,5 +390,53 @@ describe('phien chet ben OpenCode', () => {
     });
     await expect(batDau(bo)).rejects.toBeInstanceOf(LoiOpenCode);
     expect(tg.suaTinNhan.mock.calls.at(-1)?.[2] ?? '').toContain('500');
+  });
+});
+
+describe('gui anh kem cau tra loi', () => {
+  it('gui THAT nhung anh agent nhac toi', async () => {
+    // Truoc day chung chi thanh mot dong chu — te hon nua, dau `!` bi bo lai va
+    // nguoi dung nhin thay "!Duong pho Ha Noi..." voi mot lien ket mau xanh.
+    const { bo, tg } = dungBo({
+      client: {
+        vanTraLoiCuoi: vi.fn(async () => 'Xem anh:\n![Ho Guom](https://a.vn/1.jpg)'),
+      },
+    });
+    await batDau(bo);
+    await bo.nhanSuKien({ type: 'session.idle', properties: { sessionID: 'ses_1' } });
+    expect(tg.guiAnh).toHaveBeenCalledWith(9n, 'https://a.vn/1.jpg', 'Ho Guom');
+  });
+
+  it('mot anh hong KHONG lam hong task', async () => {
+    // URL do model dua ra co the chet, qua to, hoac tro toi trang HTML. Do khong
+    // phai loi cua task, va phan van ban van con lien ket de nguoi dung tu mo.
+    const { bo, kho, tg } = dungBo({
+      client: {
+        vanTraLoiCuoi: vi.fn(async () => '![a](https://a.vn/1.jpg) ![b](https://a.vn/2.jpg)'),
+      },
+    });
+    (tg.guiAnh as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('anh chet'));
+    await batDau(bo);
+    await bo.nhanSuKien({ type: 'session.idle', properties: { sessionID: 'ses_1' } });
+    expect(kho.ketThuc).toHaveBeenCalledWith(1n, 'done', expect.any(String), null);
+  });
+
+  it('hong HET thi noi mot cau, khong im lang', async () => {
+    // Im lang o day lam nguoi dung tuong bot bo qua yeu cau xem anh cua ho.
+    const { bo, tg } = dungBo({
+      client: { vanTraLoiCuoi: vi.fn(async () => '![a](https://a.vn/1.jpg)') },
+    });
+    (tg.guiAnh as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('chet'));
+    await batDau(bo);
+    await bo.nhanSuKien({ type: 'session.idle', properties: { sessionID: 'ses_1' } });
+    const cauCuoi = tg.guiTinNhan.mock.calls.at(-1)?.[1] ?? '';
+    expect(cauCuoi).toMatch(/khong tai duoc anh/i);
+  });
+
+  it('khong goi sendPhoto khi cau tra loi khong co anh nao', async () => {
+    const { bo, tg } = dungBo();
+    await batDau(bo);
+    await bo.nhanSuKien({ type: 'session.idle', properties: { sessionID: 'ses_1' } });
+    expect(tg.guiAnh).not.toHaveBeenCalled();
   });
 });
