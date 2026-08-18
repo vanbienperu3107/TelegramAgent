@@ -113,6 +113,32 @@ def check_l4_env(name, label, script, step, loi):
         loi.append("%s: %s doc $%s ma bien nay khong co nguon gia tri nao" % (name, label, var))
 
 
+def check_l4_docker_e(name, label, script, step, loi):
+    """`docker run -e TEN` (khong co `=`) chi lay duoc bien DA EXPORT.
+
+    Phep gan tran chi tao bien shell, va `[ -n "$VAR" ]` van PASS — nen chot chan
+    khong bat duoc, container im lang chay thieu bien. Luat nay tung duoc viet
+    vao §37.3 nhung KHONG duoc thi hanh, va no lot ngay o lan deploy that dau
+    tien: `CLIPROXY_BASE_URL` co trong `.env` nhung khong ai export, nen
+    `sync-models.cjs` chet voi "thieu bien moi truong".
+
+    Bien den tu `envs:` cua ssh-action thi da duoc export san — khong can lam gi.
+    """
+    forwarded = {
+        n.strip()
+        for n in ((step.get("with") or {}).get("envs") or "").split(",")
+        if n.strip()
+    }
+    exported = set(re.findall(r"^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)", script, re.M))
+    for m in re.finditer(r"-e\s+([A-Z_][A-Z0-9_]*)(?![=\w])", script):
+        var = m.group(1)
+        if var not in forwarded and var not in exported:
+            loi.append(
+                "%s: %s dung `docker run -e %s` ma bien do khong duoc export va "
+                "khong co trong envs:" % (name, label, var)
+            )
+
+
 def check_l4_run(name, label, script, step, loi):
     """Step `run:` tren runner: moi $VAR phai co nguon.
 
@@ -217,6 +243,7 @@ def main():
                 check_l1(name, label, script, loi)
                 check_l2(name, label, script, loi)
                 check_l4_env(name, label, script, step, loi)
+                check_l4_docker_e(name, label, script, step, loi)
                 if (step.get("with") or {}).get("script_stop") is not True:
                     loi.append("%s: %s thieu script_stop: true" % (name, label))
             elif "run" in step:

@@ -201,6 +201,37 @@ def test_l5_bat_secret_khong_khai(repo):
     assert "BIEN_LA" in proc.stderr
 
 
+# ─── L4: bien dung o `docker run -e` phai duoc export ───────────────────────
+
+def test_bat_docker_run_e_khong_export(repo):
+    """`docker run -e TEN` (khong co `=`) chi lay duoc bien DA EXPORT. Phep gan
+    tran chi tao bien shell, va `[ -n "$VAR" ]` van PASS — nen chot chan khong
+    bat duoc, container im lang chay thieu bien.
+
+    Luat nay tung duoc viet vao §37.3 nhung KHONG duoc thi hanh, va no lot ngay
+    o lan deploy that dau tien: CLIPROXY_BASE_URL co trong .env nhung khong ai
+    export, nen sync-models.cjs chet voi "thieu bien moi truong".
+    """
+    script = SCRIPT_OK + "\nBIEN=$(cat x)\ndocker run --rm -e BIEN alpine env"
+    write_deploy(repo, [ssh_step(script=script)])
+    proc = run_checker(repo)
+    assert proc.returncode != 0
+    assert "BIEN" in proc.stderr
+
+
+def test_cho_qua_khi_da_export(repo):
+    script = SCRIPT_OK + "\nBIEN=$(cat x)\nexport BIEN\ndocker run --rm -e BIEN alpine env"
+    write_deploy(repo, [ssh_step(script=script)])
+    assert run_checker(repo).returncode == 0
+
+
+def test_cho_qua_khi_bien_den_tu_envs(repo):
+    """Bien di qua `envs:` cua ssh-action thi da duoc export san."""
+    script = SCRIPT_OK + "\ndocker run --rm -e FOO alpine env"
+    write_deploy(repo, [ssh_step(script=script)])
+    assert run_checker(repo).returncode == 0
+
+
 # ─── deploy.yml that: cac bat bien ve noi dung ──────────────────────────────
 
 @pytest.fixture(scope="module")
