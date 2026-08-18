@@ -98,13 +98,15 @@ export class BoChayTask {
     await this.khoTask.ganTinNhanTrangThai(task.id, idTin);
 
     try {
+      // Chi dat truong khi THAT SU co gia tri: voi exactOptionalPropertyTypes,
+      // truyen `undefined` tuong minh khac han voi bo trong truong do.
       await this.client.guiPrompt({
         sessionID: doiSo.sessionID,
         van: doiSo.van,
-        providerID: doiSo.providerID ?? undefined,
-        modelID: doiSo.modelID ?? undefined,
-        agent: doiSo.agent ?? undefined,
         messageID,
+        ...(doiSo.providerID ? { providerID: doiSo.providerID } : {}),
+        ...(doiSo.modelID ? { modelID: doiSo.modelID } : {}),
+        ...(doiSo.agent ? { agent: doiSo.agent } : {}),
       });
     } catch (e) {
       // Gui prompt hong thi PHAI nha khoa ngay. Neu khong, nguoi dung bi chan

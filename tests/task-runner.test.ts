@@ -33,7 +33,9 @@ function dungBo(ghiDe: {
 } = {}) {
   const tg = {
     guiTinNhan: vi.fn(async () => 100n),
-    suaTinNhan: vi.fn(async () => undefined),
+    suaTinNhan: vi.fn(
+      async (_chat: bigint, _msg: bigint, _van: string, _banPhim?: unknown) => undefined,
+    ),
   };
   const kho = {
     taoTask: vi.fn(async () => taskGia()),
