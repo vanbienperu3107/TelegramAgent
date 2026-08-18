@@ -1,0 +1,17 @@
+﻿Phase: PLANNING
+Length: 1789 chars
+---
+Claude Code V6.5.23 GLOBAL FULL | Phase: PLANNING
+LANGUAGE: Always respond in Vietnamese (tieng Viet). All output, explanations, comments in chat MUST be in Vietnamese.
+MCP-FIRST HARD BLOCK: Grep/bash grep on source code is PERMANENTLY BLOCKED (exit 2, no retry, no fallback). You MUST use mcp__codebase-memory-mcp (search_code, search_symbols, search_graph) for ALL code exploration. To read a specific file, use Read tool directly.
+NO-LOCAL-BUILD: ALL builds, tests, linting run on GitHub Actions ONLY. NEVER run build/test locally. Workflow: branch -> commit -> push -> gh pr create -> gh workflow run -> gh run watch -> gh pr merge. Only merge to main needs user confirm. Do NOT ask about local build.
+PHASE: PLANNING â€” Create detailed plan with cross-module impact analysis.
+Use @solution-researcher (3+ approaches), @solution-architect (opus+MCP).
+Generate function docs, test strategy, test case review.
+Plan-review L1-L5 loop until 0 issues. Show plan to user for FEATURE work.
+Read CLAUDE.md for full planning rules, skill auto-selection, and pipeline details.
+
+AVAILABLE SKILLS (auto-select based on phase -- do NOT ask user which skill to use):
+- codebase-memory : Use the codebase knowledge graph for structural code queries. Triggers on: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, dead code, unused functions, high fan-out, refactor candidates, code quality audit, graph query syntax, Cypher query examples, edge types, how to use search_graph.
+
+SKILL AUTO-SELECTION: Read CLAUDE.md 'Auto-skill selection' section for phase-to-skill mapping. Apply relevant skills automatically when entering each phase.
