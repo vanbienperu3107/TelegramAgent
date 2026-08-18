@@ -51,10 +51,20 @@ jobs:
           $SSH4 "bash /tmp/probe-events.sh" > probe-events.txt 2>&1 || true
           $SSH4 "cat /tmp/opencode-events-live.jsonl" > opencode-events-live.jsonl 2>/dev/null || true
 
+          # Vong ba: nguoi dung bao "cho xin hinh anh mo ta" -> bot chi tra ve
+          # mot cau caption, khong thay gi khac. Do xem message that su chua gi:
+          # mot FilePart bi Gateway bo qua, hay chi la van ban hua ho khong co
+          # noi dung dinh kem nao ca. Hai gia thuyet doi hai cach sua khac nhau.
+          scp -P "$SSH_PORT" -i k4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 \
+            scripts/vpn4/probe-file-part.sh "$SSH_USER@$SSH_HOST_VPN4:/tmp/probe-file-part.sh"
+          $SSH4 "bash /tmp/probe-file-part.sh" > probe-file-part.txt 2>&1 || true
+
           echo "=== be mat API ===" >> "$GITHUB_STEP_SUMMARY"
           head -c 3000 probe.txt >> "$GITHUB_STEP_SUMMARY"
           echo "=== luong su kien khi chay that ===" >> "$GITHUB_STEP_SUMMARY"
           tail -c 5000 probe-events.txt >> "$GITHUB_STEP_SUMMARY"
+          echo "=== hinh anh: message co FilePart khong ===" >> "$GITHUB_STEP_SUMMARY"
+          cat probe-file-part.txt >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -65,3 +75,4 @@ jobs:
             opencode-events.jsonl
             probe-events.txt
             opencode-events-live.jsonl
+            probe-file-part.txt
