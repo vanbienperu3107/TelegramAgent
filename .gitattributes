@@ -1,0 +1,18 @@
+# Chuan hoa ky tu xuong dong. Khong co file nay, mot lan sua vai dong tren
+# Windows co the ghi lai CA FILE bang CRLF — diff phinh len hang nghin dong, va
+# bo quet secret phai soi lai ca noi dung cu roi bao dong gia. Da xay ra that
+# voi Telegram.md.
+* text=auto eol=lf
+
+# Script chay tren Linux: CRLF lam shebang hong voi thong diep rat kho doc
+# ("bad interpreter: /bin/bash^M").
+*.sh   text eol=lf
+*.py   text eol=lf
+*.cjs  text eol=lf
+*.ts   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Nhi phan: khong dung toi.
+*.png  binary
+*.jpg  binary

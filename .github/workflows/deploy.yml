@@ -73,13 +73,20 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
           script_stop: true
-          envs: GITHUB_RUN_ID
+          envs: GITHUB_RUN_ID,DEPLOY_REF
           script: |
             exec 9>/var/lock/vpn4-deploy
             flock -w 600 9 || exit 1
-            docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/baseline-$GITHUB_RUN_ID.txt
+            install -d -m 755 /opt/opencode
+            cd /opt/opencode
+            git config --global --add safe.directory /opt/opencode
+            test -d .git || git clone https://github.com/vanbienperu3107/TelegramAgent.git .
+            git fetch --all --prune
+            git reset --hard "origin/$DEPLOY_REF"
+            bash scripts/vpn4/snapshot-vpn4.sh > /tmp/baseline-$GITHUB_RUN_ID.txt
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
+          DEPLOY_REF: ${{ github.ref_name }}
 
       # ─── Buoc 3: vpn6 (step `run:` tren runner, ssh tran) ───────────────────
       # KHONG dung ssh-action o day: can ghi $GITHUB_OUTPUT de chuyen
@@ -121,12 +128,7 @@ jobs:
             exec 9>/var/lock/vpn4-deploy
             flock -w 600 9 || exit 1
             echo "$GHCR_TOKEN" | docker login ghcr.io -u vanbienperu3107 --password-stdin
-            install -d -m 755 "$DEPLOY_PATH"
             cd /opt/opencode
-            git config --global --add safe.directory /opt/opencode
-            test -d .git || git clone https://github.com/vanbienperu3107/TelegramAgent.git .
-            git fetch --all --prune
-            git reset --hard "origin/$DEPLOY_REF"
             install -d -m 700 keys
             install -m 600 /dev/null keys/pg_tunnel_key
             echo "$PG_TUNNEL_KEY_B64" | base64 -d > keys/pg_tunnel_key
@@ -198,7 +200,7 @@ jobs:
             docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" node /opt/verify-opencode-config.cjs
             docker run --rm --network edge --env-file /opt/opencode/.env.opencode -e CLIPROXY_BASE_URL -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "ghcr.io/vanbienperu3107/opencode-server:$OPENCODE_TAG" opencode run --model cliproxy/claude-opus-5 "Viet mot cau tieng Viet co dau ve thoi tiet" > /tmp/smoke-$GITHUB_RUN_ID.txt
             python3 scripts/check-utf8.py /tmp/smoke-$GITHUB_RUN_ID.txt
-            docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/after-$GITHUB_RUN_ID.txt
+            bash scripts/vpn4/snapshot-vpn4.sh > /tmp/after-$GITHUB_RUN_ID.txt
             diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/after-$GITHUB_RUN_ID.txt
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
@@ -270,7 +272,7 @@ jobs:
           install -m 600 /dev/null key4 && echo "$SSH_KEY" > key4
           install -m 644 /dev/null kh4 && echo "$VPN4_HOST_KEY_B64" | base64 -d > kh4
           SSH4="ssh -p $SSH_PORT -i key4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 $SSH_USER@$SSH_HOST_VPN4"
-          $SSH4 "docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/danger-$GITHUB_RUN_ID.txt" || true
+          $SSH4 "cd /opt/opencode && bash scripts/vpn4/snapshot-vpn4.sh > /tmp/danger-$GITHUB_RUN_ID.txt" || true
           $SSH4 "diff -q /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/danger-$GITHUB_RUN_ID.txt" > /dev/null 2>&1 || echo "danger=true" >> "$GITHUB_OUTPUT"
           MEMFREE=$($SSH4 "free -m | awk '/^Mem:/{print \$7}'" || echo 0)
           test "${MEMFREE:-0}" -ge 200 || echo "danger=true" >> "$GITHUB_OUTPUT"
@@ -293,7 +295,7 @@ jobs:
             flock -w 600 9 || exit 1
             cd /opt/opencode
             docker compose down
-            docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.StartedAt}}' derper edge-nginx caddy-edge cliproxy vpn-gw ts-vpngw ping-reporter-vpn4 ts-vpn4 > /tmp/abort-$GITHUB_RUN_ID.txt
+            bash scripts/vpn4/snapshot-vpn4.sh > /tmp/abort-$GITHUB_RUN_ID.txt
             diff /tmp/baseline-$GITHUB_RUN_ID.txt /tmp/abort-$GITHUB_RUN_ID.txt
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}

@@ -38,6 +38,25 @@ Tailnet ts-vpn4 = 100.64.0.4 · ts-vpngw = 100.64.0.9 (TS_USERSPACE=false)
 | `vpn-gw` + `ts-vpngw` | — | Cổng vào mạng Bitel, **chỉ advertise `10.121.124.155/32`** | không đặt |
 | `ping-reporter-vpn4` | — | Telemetry DERP | không đặt |
 
+> **Đo lại 2026-08-18 — hạ tầng ĐÃ TRÔI so với bảng trên.** `ts-vpn4` **không còn tồn tại**
+> (còn 7 container), và `cliproxy` nay bind thêm vào địa chỉ tailnet ở các cổng
+> 1455/8085/8317/54545 — dấu hiệu tailscale đã chuyển từ container lên host. RAM cũng chặt hơn:
+> 821 MB đã dùng, **1146 MB khả dụng** (so với 692/1275 hôm 13/08), tức ngân sách §37.1 còn ít
+> biên hơn.
+>
+> Đây là lý do `scripts/vpn4/snapshot-vpn4.sh` chụp **mọi container đang chạy trừ stack này**,
+> không dùng danh sách cứng: bản deploy đầu tiên đỏ ngay bước 2 với `no such object: ts-vpn4`.
+> Danh sách cứng biến một thay đổi vô hại của người khác thành sự cố của mình.
+
+> **Đo lại 2026-08-18 — hạ tầng ĐÃ TRÔI so với bảng trên.** `ts-vpn4` **không còn tồn tại**
+> (còn 7 container), và `cliproxy` nay bind thêm vào `100.64.0.4` ở các cổng 1455/8085/8317/54545
+> — dấu hiệu tailscale đã chuyển từ container lên host. RAM cũng chặt hơn: 821 MB đã dùng,
+> **1146 MB khả dụng** (so với 692/1275 hôm 13/08), tức ngân sách ở §37.1 còn ít biên hơn.
+>
+> Đây là lý do `scripts/vpn4/snapshot-vpn4.sh` chụp **mọi container đang chạy trừ stack này**,
+> không dùng danh sách cứng: bản deploy đầu tiên đỏ ngay bước 2 với `no such object: ts-vpn4`.
+> Danh sách cứng biến một thay đổi vô hại của người khác thành sự cố của mình.
+
 Mạng docker: `edge` (cliproxy 172.23.0.3, caddy-edge 172.23.0.5), `cliproxy_default`,
 `derp-vpn4_default`, `derp-vpn4-v2_default`, `relay-vpn4_relay_net`, `vpn-gw_default`.
 
@@ -4124,7 +4143,7 @@ lỗi sau, mỗi lỗi là một bài kiểm thử:
 | Kiểm tra | Chặn điều gì |
 |---|---|
 | **Không in kiểm kê hạ tầng ra log Actions**: các lệnh chụp (`docker compose ps`, `ss`, `docker inspect` 8 container, `diff` ảnh vpn6) ghi ra file rồi chỉ in **kết quả so sánh**; nội dung đầy đủ upload thành artifact | Log Actions của repo PUBLIC là **công khai**. Plan lập luận rất kỹ rằng `SSH_HOST_VPN6` "không phải bí mật thật", nhưng chưa xét việc **xuất bản kiểm kê hạ tầng cả fleet lên Internet sau mỗi lần deploy**: tên container, tên database, tên role, cổng đang mở |
-| Quét secret trong diff (token bot `\d{8,10}:AA…`, `sk-`, `ghp_`, chuỗi kết nối Postgres) | Lộ bí mật trên repo công khai |
+| Quét secret trong diff: token bot Telegram, khoá CLIProxy, PAT GitHub, khoá riêng SSH, chuỗi kết nối Postgres. **Mẫu literal chỉ nằm trong `ci.yml`, không viết vào tài liệu** — một file mô tả mẫu bị cấm sẽ tự kích hoạt chính bộ quét đó (đã xảy ra với hook cục bộ) | Lộ bí mật trên repo công khai |
 | **Cấm `pull_request_target` tuyệt đối** | Trigger đó chạy workflow của nhánh đích **với secret đầy đủ** trên mã đến từ fork. Repo này giữ `SSH_KEY` = **root trên máy chạy DERP relay của cả fleet** và `PG_TUNNEL_KEY_B64`. Một PR "thêm test" lọt review là đủ để lấy tất cả |
 | **Cấm mọi `secrets.*` trong workflow có trigger `pull_request`** | Cùng lý do |
 | **Mọi workflow khai `on:` tường minh**; `deploy.yml` chỉ `workflow_dispatch` | Không khai thì mặc định của người viết sau là ẩn số |

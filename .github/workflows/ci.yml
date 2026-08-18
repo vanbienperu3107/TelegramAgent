@@ -38,8 +38,8 @@ jobs:
       - name: Luat L1-L5 cua deploy.yml
         run: python3 scripts/check-deploy-policy.py
 
-      - name: Lint cu phap 3 script vpn6
-        run: bash -n scripts/vpn6/create-opencode-db.sh scripts/vpn6/update-permitopen.sh scripts/vpn6/snapshot-vpn6.sh
+      - name: Lint cu phap script vpn6 + vpn4
+        run: bash -n scripts/vpn6/create-opencode-db.sh scripts/vpn6/update-permitopen.sh scripts/vpn6/snapshot-vpn6.sh scripts/vpn4/snapshot-vpn4.sh
 
       - name: Kiem cu phap JavaScript
         run: |
