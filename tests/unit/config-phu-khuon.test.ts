@@ -31,6 +31,10 @@ const KHONG_PHAI_CUA_GATEWAY: Record<string, string> = {
   // doc qua `.env.opencode` de giai `{env:...}` trong opencode.json.
   CLIPROXY_BASE_URL: 'sync-models.cjs va opencode-server doc, Gateway thi khong',
   CLIPROXY_API_KEY: 'sync-models.cjs va opencode-server doc, Gateway thi khong',
+  // Gateway khong doc bien nay TRUC TIEP — no di vao DATABASE_URL qua giu cho
+  // `__OPENCODE_PG_PASSWORD__` ma gen-env.py thay. Buoc verify cua deploy cung
+  // doc no de goi psql. Doi schema doc them mot ban sao roi la moi cho lech.
+  OPENCODE_PG_PASSWORD: 'di vao DATABASE_URL qua giu cho, gen-env.py thay',
 };
 
 function bienTrongKhuon(ten: string): string[] {
