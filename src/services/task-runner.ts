@@ -10,6 +10,7 @@ import type { Logger } from 'pino';
 
 import type { Config } from '../config.js';
 import type { SuKien } from './event-stream.js';
+import { rutAnh } from '../bot/dinh-dang.js';
 import { BoGopTienDo, CongTacSua, veTienDo } from './progress.js';
 import type { OpenCodeClient } from './opencode-client.js';
 import { LoiOpenCode } from './opencode-client.js';
@@ -19,6 +20,14 @@ import { DaCoTaskDangChay, KhoTask, type Task } from './tasks.js';
 export interface CuaSoTelegram {
   guiTinNhan: (chatId: bigint, van: string, banPhim?: unknown) => Promise<bigint>;
   suaTinNhan: (chatId: bigint, messageId: bigint, van: string, banPhim?: unknown) => Promise<void>;
+  /**
+   * Gui mot anh theo URL. Nem khi Telegram tu choi — ben goi tu quyet dinh.
+   *
+   * Tach khoi `guiTinNhan` vi that bai o day KHONG phai loi: URL do model dua ra
+   * co the chet, qua to, hoac tro toi mot trang HTML chu khong phai anh. Nguoi
+   * dung van con lien ket trong phan van ban.
+   */
+  guiAnh: (chatId: bigint, url: string, chuThich?: string) => Promise<void>;
 }
 
 function giay(dc: { batDau: number }): number {
@@ -239,6 +248,38 @@ export class BoChayTask {
       for (const manh of chiaTinNhan(ketQua)) {
         await this.tg.guiTinNhan(dc.task.telegramChatId, manh);
       }
+      await this.guiAnhKemTheo(dc.task.telegramChatId, ketQua);
+    }
+  }
+
+  /**
+   * Gui THAT nhung anh agent nhac toi bang cu phap `![alt](url)`.
+   *
+   * Truoc day chung chi thanh mot dong chu — te hon nua, dau `!` bi bo lai va
+   * nguoi dung nhin thay "!Duong pho Ha Noi..." voi mot lien ket mau xanh.
+   *
+   * Moi anh gui rieng va that bai duoc NUOT: URL do model dua ra co the chet,
+   * qua to, hoac tro toi mot trang HTML chu khong phai anh — do khong phai loi
+   * cua task, va phan van ban van con lien ket de nguoi dung tu mo.
+   */
+  private async guiAnhKemTheo(chatId: bigint, van: string): Promise<void> {
+    const ds = rutAnh(van);
+    if (ds.length === 0) return;
+    let hong = 0;
+    for (const a of ds) {
+      try {
+        await this.tg.guiAnh(chatId, a.url, a.alt || undefined);
+      } catch (e) {
+        hong += 1;
+        this.log.warn({ err: e, url: a.url }, 'Telegram tu choi anh');
+      }
+    }
+    if (hong === ds.length) {
+      // Hong HET thi noi mot cau: im lang o day lam nguoi dung tuong bot bo qua
+      // yeu cau xem anh cua ho.
+      await this.tg
+        .guiTinNhan(chatId, '🖼 Khong tai duoc anh nao — bam vao lien ket trong cau tra loi de xem.')
+        .catch(() => undefined);
     }
   }
 
