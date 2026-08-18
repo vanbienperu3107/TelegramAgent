@@ -76,6 +76,38 @@ print(anh if anh else 'KHONG CO tool nao co ten lien quan toi anh')
   echo
   echo "########## 3. Log khoi dong MCP (20 dong cuoi co chu mcp) ##########"
   docker logs opencode-server 2>&1 | grep -i mcp | tail -20 || echo "khong co dong log nao nhac toi mcp"
+echo
+echo "########## 4. Skill co duoc nap khong ##########"
+oc "curl -sS --max-time 20 $H $BASE/skill" | python3 -c "
+import json,sys
+try:
+    d = json.load(sys.stdin)
+except Exception as e:
+    print('khong doc duoc /skill:', e); raise SystemExit
+ds = d if isinstance(d, list) else []
+print('so skill duoc nap:', len(ds))
+for s in ds:
+    print('  -', s.get('name'), '|', s.get('location'))
+if not ds:
+    print('  KHONG CO SKILL NAO — kiem mount /opt/skills va skills.paths')
+"
+
+echo
+echo "########## 5. Cong cu sinh anh co that khong ##########"
+# Cau hinh khai la mot chuyen, binary co trong image la chuyen khac.
+for lenh in dot python3 git rg; do
+  printf '%-8s -> ' "$lenh"
+  oc "command -v $lenh || echo KHONG-CO"
+done
+
+echo
+echo "--- dot co sinh duoc PNG that khong ---"
+oc 'printf "digraph{a->b}" | dot -Tpng 2>/dev/null | wc -c'
+
+echo
+echo "########## 6. Thu muc skill co mount vao khong ##########"
+oc 'ls /opt/skills 2>&1 | head -5'
+
 }
 
 than 2>&1 | sed "$BIEU"
