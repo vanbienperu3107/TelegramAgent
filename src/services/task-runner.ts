@@ -11,6 +11,7 @@ import type { Logger } from 'pino';
 import type { Config } from '../config.js';
 import type { SuKien } from './event-stream.js';
 import { rutAnh } from '../bot/dinh-dang.js';
+import { timTepKetQua } from '../bot/tep-ket-qua.js';
 import { BoGopTienDo, CongTacSua, veTienDo } from './progress.js';
 import type { OpenCodeClient } from './opencode-client.js';
 import { LoiOpenCode } from './opencode-client.js';
@@ -28,6 +29,13 @@ export interface CuaSoTelegram {
    * dung van con lien ket trong phan van ban.
    */
   guiAnh: (chatId: bigint, url: string, chuThich?: string) => Promise<void>;
+  /**
+   * Gui mot TEP tu dia (tep agent vua tao trong workspace).
+   *
+   * Tach khoi `guiAnh`: `guiAnh` nhan URL tren mang, ham nay nhan duong dan cuc
+   * bo — hai nguon khac han, va gop lam mot se lam cho cho goi phai doan.
+   */
+  guiTep: (chatId: bigint, duongDan: string, ten: string, laAnh: boolean) => Promise<void>;
 }
 
 function giay(dc: { batDau: number }): number {
@@ -249,6 +257,36 @@ export class BoChayTask {
         await this.tg.guiTinNhan(dc.task.telegramChatId, manh);
       }
       await this.guiAnhKemTheo(dc.task.telegramChatId, ketQua);
+      await this.guiTepAgentTaoRa(dc.task.telegramChatId, ketQua);
+    }
+  }
+
+  /**
+   * Gui nhung tep agent VUA TAO trong workspace.
+   *
+   * Truoc day agent tao xong thi khong ai gui: Gateway khong mount workspace, nen
+   * nguoi dung chi thay mot cau "da tao xong" ma khong nhan duoc gi. Do la mot
+   * trong nhung ly do agent hoc thoi quen HUA HAO.
+   *
+   * `WORKSPACE_ROOT` rong nghia la khong mount — bo qua im lang la dung o day:
+   * mot cau canh bao moi luot chay se thanh tieng on.
+   */
+  private async guiTepAgentTaoRa(chatId: bigint, van: string): Promise<void> {
+    const goc = this.cfg.WORKSPACE_ROOT;
+    if (!goc) return;
+    let ds: Awaited<ReturnType<typeof timTepKetQua>>;
+    try {
+      ds = await timTepKetQua(van, goc);
+    } catch (e) {
+      this.log.warn({ err: e }, 'khong quet duoc workspace');
+      return;
+    }
+    for (const t of ds) {
+      try {
+        await this.tg.guiTep(chatId, t.duongDan, t.ten, t.laAnh);
+      } catch (e) {
+        this.log.warn({ err: e, tep: t.ten }, 'khong gui duoc tep tu workspace');
+      }
     }
   }
 

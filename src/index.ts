@@ -9,7 +9,7 @@
  *
  * Migration KHONG chay o day: no la mot tien trinh rieng chay truoc (§37.2 buoc 4).
  */
-import { Bot, type Context } from 'grammy';
+import { Bot, InputFile, type Context } from 'grammy';
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { createSql, pingDb } from './db/index.js';
@@ -330,6 +330,17 @@ async function main() {
             link_preview_options: { is_disabled: true },
           });
         }, van);
+      },
+      guiTep: async (chatId, duongDan, ten, laAnh) => {
+        // Anh gui bang sendPhoto de Telegram hien truc tiep; con lai gui bang
+        // sendDocument de giu nguyen ven tep (sendPhoto NEN LAI anh va lam mat
+        // chi tiet cua so do).
+        const tep = new InputFile(duongDan, ten);
+        if (laAnh) {
+          await bot.api.sendPhoto(Number(chatId), tep, { caption: ten.slice(0, 1000) });
+        } else {
+          await bot.api.sendDocument(Number(chatId), tep, { caption: ten.slice(0, 1000) });
+        }
       },
       guiAnh: async (chatId, url, chuThich) => {
         // Chu thich cua Telegram gioi han 1024 ky tu; `alt` cua agent co the dai
