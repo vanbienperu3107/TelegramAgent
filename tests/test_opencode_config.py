@@ -316,3 +316,68 @@ def test_timeout_mcp_du_rong():
     for ten, cau_hinh in _mcp_cuc_bo().items():
         t = cau_hinh.get("timeout")
         assert t is None or t >= 30000, "%s timeout %s qua ngan" % (ten, t)
+
+
+# --- skill ---------------------------------------------------------------------
+
+def test_duong_dan_skill_khop_voi_mount_trong_compose():
+    """`skills.paths` trong cau hinh phai tro dung cho compose mount vao.
+
+    Lech nhau thi OpenCode doc mot thu muc RONG va bao... khong bao gi ca: khong
+    co skill nao duoc nap, agent chay binh thuong, va nguoi dung chi thay "skill
+    khong hoat dong" ma khong co manh moi nao.
+    """
+    import yaml
+
+    cfg = json.loads((ROOT / "opencode.json.template").read_text(encoding="utf-8"))
+    duong_dan = (cfg.get("skills") or {}).get("paths") or []
+    assert duong_dan, "cau hinh khong khai skills.paths"
+
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    mounts = compose["services"]["opencode-server"].get("volumes", [])
+    dich = {m.split(":")[1] for m in mounts if m.count(":") >= 1}
+    for d in duong_dan:
+        assert d in dich, "skills.paths tro toi %s nhung compose khong mount cho do" % d
+
+
+def test_thu_muc_skill_mount_CHI_DOC():
+    """Agent khong duoc sua skill cua chinh no.
+
+    Mot lan sua nham la moi phien sau deu chay theo huong dan da hong, va khong ai
+    doi chieu lai voi ban trong git.
+    """
+    import yaml
+
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    mounts = compose["services"]["opencode-server"].get("volumes", [])
+    skill = [m for m in mounts if "/opt/skills" in m]
+    assert skill, "khong thay mount thu muc skill"
+    for m in skill:
+        assert m.endswith(":ro"), "thu muc skill phai mount chi doc: %s" % m
+
+
+def test_moi_skill_deu_co_SKILL_md():
+    """Mot thu muc con khong co SKILL.md thi OpenCode bo qua im lang."""
+    goc = ROOT / "skill_new"
+    if not goc.is_dir():
+        return  # chua co skill nao — khong phai loi
+    for con in sorted(goc.iterdir()):
+        if not con.is_dir() or con.name.startswith("."):
+            continue
+        assert (con / "SKILL.md").is_file(), "%s thieu SKILL.md" % con.name
+
+
+def test_python3_co_trong_image_neu_skill_dung_script_python():
+    """Script cua skill viet bang Python thi image PHAI co python3.
+
+    Thieu no thi agent goi script va nhan "command not found" — mot loi no khong
+    the tu sua, va nguoi dung chi thay skill "khong chay".
+    """
+    goc = ROOT / "skill_new"
+    if not goc.is_dir():
+        return
+    co_python = any(goc.rglob("*.py"))
+    if not co_python:
+        return
+    docker = (ROOT / "docker" / "Dockerfile.opencode-server").read_text(encoding="utf-8")
+    assert "python3" in docker, "skill co script .py nhung image khong cai python3"
