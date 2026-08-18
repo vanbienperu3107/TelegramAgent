@@ -5,27 +5,23 @@
   "instructions": [
     "AGENTS.md"
   ],
-  "//mcp": "Lenh dung `npx` chu khong `cmd.exe /c npx` nhu cau hinh may ca nhan: container la Debian. Moi khoa API la {env:...}, gia tri di qua .env.opencode.",
+  "//mcp": "context7/exa goi BINARY da cai san trong image (xem Dockerfile), khong `npx -y`: do duoc 2026-08-18 la ca hai deu failed voi \"Operation timed out after 15000ms\" vi npx phai tai goi tu registry moi lan khoi dong. OpenCode nuot loi do IM LANG. brave van dung npx vi dang tat (enabled:false). Moi khoa API la {env:...}, gia tri di qua .env.opencode.",
   "mcp": {
     "context7": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
-        "@upstash/context7-mcp"
+        "context7-mcp"
       ],
       "enabled": true,
-      "timeout": 15000
+      "timeout": 60000
     },
     "exa": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
         "exa-mcp-server"
       ],
       "enabled": true,
-      "timeout": 15000,
+      "timeout": 60000,
       "environment": {
         "EXA_API_KEY": "{env:EXA_API_KEY}"
       }
@@ -40,7 +36,7 @@
         "stdio"
       ],
       "enabled": false,
-      "timeout": 15000,
+      "timeout": 60000,
       "environment": {
         "BRAVE_API_KEY": "{env:BRAVE_API_KEY}"
       }
@@ -49,7 +45,7 @@
       "type": "remote",
       "url": "https://mcp.tavily.com/mcp/?tavilyApiKey={env:TAVILY_API_KEY}",
       "enabled": true,
-      "timeout": 15000,
+      "timeout": 60000,
       "headers": {
         "DEFAULT_PARAMETERS": "{\"search_depth\":\"basic\",\"max_results\":3,\"include_answer\":false,\"include_raw_content\":false,\"include_images\":false}"
       }

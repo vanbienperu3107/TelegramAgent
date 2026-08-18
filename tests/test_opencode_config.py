@@ -244,6 +244,15 @@ def test_moi_giu_cho_env_deu_co_trong_khuon_env():
     assert not thieu, "giu cho khong co trong .env.opencode.example: %s" % thieu
 
 
+def _mcp_cuc_bo():
+    d = json.loads((ROOT / "opencode.json.template").read_text(encoding="utf-8"))
+    return {
+        ten: ch
+        for ten, ch in (d.get("mcp") or {}).items()
+        if ch.get("type") == "local"
+    }
+
+
 def test_mcp_cuc_bo_chay_duoc_tren_linux():
     """Lenh cua MCP server phai chay duoc trong container Debian.
 
@@ -251,11 +260,59 @@ def test_mcp_cuc_bo_chay_duoc_tren_linux():
     khong co cmd.exe — MCP server se khong bao gio khoi dong duoc, va trieu chung
     la agent im lang khong dung duoc tool do chu khong phai mot loi ro rang.
     """
-    d = json.loads((ROOT / "opencode.json.template").read_text(encoding="utf-8"))
-    for ten, cau_hinh in (d.get("mcp") or {}).items():
-        if cau_hinh.get("type") != "local":
-            continue
+    for ten, cau_hinh in _mcp_cuc_bo().items():
         lenh = cau_hinh.get("command") or []
         assert lenh, "%s thieu command" % ten
         assert lenh[0] != "cmd.exe", "%s dung cmd.exe — khong co trong container Linux" % ten
-        assert lenh[0] in ("npx", "node", "bun"), "%s dung lenh la: %s" % (ten, lenh[0])
+
+
+def test_mcp_dang_BAT_phai_dung_binary_cai_san_trong_image():
+    """MCP dang bat KHONG duoc `npx -y` tai goi luc chay.
+
+    Do duoc 2026-08-18 tren server that: ca context7 lan exa deu
+    `status=failed, Operation timed out after 15000ms`. `npx -y` phai tai goi tu
+    registry MOI LAN container khoi dong — khong cache npm, may o Peru — va
+    OpenCode nuot loi do IM LANG: khong log, khong canh bao, agent chi khong co
+    tool va tra loi "minh khong lam duoc".
+
+    MCP dang TAT thi duoc phep giu npx: no khong khoi dong nen khong the timeout,
+    va bat len la mot quyet dinh tuong minh se keo theo viec cai goi vao image.
+    """
+    for ten, cau_hinh in _mcp_cuc_bo().items():
+        if not cau_hinh.get("enabled"):
+            continue
+        lenh = cau_hinh.get("command") or []
+        assert lenh[0] != "npx", (
+            "%s dang bat ma van dung npx — se tai goi luc khoi dong va timeout. "
+            "Cai goi trong Dockerfile.opencode-server roi goi thang binary." % ten
+        )
+
+
+def test_binary_cua_mcp_dang_bat_deu_duoc_cai_trong_dockerfile():
+    """Moi binary MCP duoc goi phai co lenh cai tuong ung trong Dockerfile.
+
+    Thieu thi container khoi dong len va MCP chet voi "command not found" — lai
+    la mot loi OpenCode nuot im lang. Dockerfile co `command -v` de build DUNG
+    NGAY neu ten binary khac ten goi, nhung phep kiem nay bat truoc mot buoc: khai
+    trong cau hinh ma quen cai han.
+    """
+    docker = (ROOT / "docker" / "Dockerfile.opencode-server").read_text(encoding="utf-8")
+    for ten, cau_hinh in _mcp_cuc_bo().items():
+        if not cau_hinh.get("enabled"):
+            continue
+        binary = (cau_hinh.get("command") or [""])[0]
+        assert "command -v %s" % binary in docker, (
+            "Dockerfile thieu `command -v %s` — khai MCP %s ma quen cai binary" % (binary, ten)
+        )
+
+
+def test_timeout_mcp_du_rong():
+    """15000ms la nguong DA DO THAY LA KHONG DU.
+
+    Gio khong con tai goi luc chay nen 15s that ra du, nhung mot MCP khoi dong
+    cham hon du kien thi chi cham — con timeout thi CHET IM LANG. Danh doi khong
+    can nhac.
+    """
+    for ten, cau_hinh in _mcp_cuc_bo().items():
+        t = cau_hinh.get("timeout")
+        assert t is None or t >= 30000, "%s timeout %s qua ngan" % (ten, t)
