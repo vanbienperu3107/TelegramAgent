@@ -24,9 +24,18 @@ FROM node:22-bookworm-slim
 #   python3      — script cua skill (skill_new/) deu viet bang Python. Thieu no
 #                  thi agent goi script va nhan "command not found" — mot loi
 #                  no khong the tu sua, va nguoi dung chi thay skill "khong chay".
+#   graphviz     — de agent XUAT DUOC ANH THAT (`dot -Tpng`), va de
+#                  `scripts/autolayout.py` cua drawio-skill chay duoc.
+#
+#                  CHON GRAPHVIZ CHU KHONG PHAI mermaid-cli: mermaid-cli render
+#                  bang Chromium headless, ton ~300 MB dia va 200-400 MB RAM luc
+#                  chay. Ngan sach hien tai la 896/900 MB — them Chromium la OOM
+#                  chac chan, va `oom_score_adj: 800` se giet dung container nay.
+#                  Graphviz sinh anh truc tiep, khong can trinh duyet, ~15 MB.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      git openssh-client ripgrep ca-certificates curl tini python3 \
+      git openssh-client ripgrep ca-certificates curl tini python3 graphviz \
+ && command -v dot \
  && rm -rf /var/lib/apt/lists/*
 
 ARG OPENCODE_VERSION

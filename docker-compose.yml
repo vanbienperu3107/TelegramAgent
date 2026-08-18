@@ -16,6 +16,14 @@ services:
     oom_score_adj: 600
     pids_limit: 256
     env_file: .env
+    volumes:
+      # CHI DOC. Gateway can doc workspace de gui ve Telegram nhung tep agent tao
+      # ra (so do, anh, bao cao) — truoc day agent tao xong thi khong ai gui, va
+      # nguoi dung chi thay mot cau noi "da tao xong" ma khong nhan duoc gi.
+      #
+      # `:ro` la bat buoc: moi thay doi trong workspace phai den tu agent, di qua
+      # cua duyet quyen. Gateway ghi duoc la mot duong vong qua cua do.
+      - ./workspace:/workspace:ro
     depends_on:
       pg-tunnel:
         condition: service_started

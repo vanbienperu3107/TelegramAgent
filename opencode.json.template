@@ -5,7 +5,7 @@
   "instructions": [
     "AGENTS.md"
   ],
-  "//mcp": "context7/exa goi BINARY da cai san trong image (xem Dockerfile), khong `npx -y`: do duoc 2026-08-18 la ca hai deu failed voi \"Operation timed out after 15000ms\" vi npx phai tai goi tu registry moi lan khoi dong. OpenCode nuot loi do IM LANG. brave van dung npx vi dang tat (enabled:false). Moi khoa API la {env:...}, gia tri di qua .env.opencode.",
+  "//mcp": "context7/exa goi BINARY da cai san trong image (xem Dockerfile), khong `npx -y`: do duoc 2026-08-18 la ca hai deu failed voi \"Operation timed out after 15000ms\" vi npx phai tai goi tu registry moi lan khoi dong. OpenCode nuot loi do IM LANG. tavily bat include_images: nguoi dung hoi \"tim anh\" ma cong cu tim kiem duoc cau hinh KHONG tra ve anh nao thi agent khong co gi de dua, va no bia ra la \"da tao collage\". brave van dung npx vi dang tat (enabled:false). Moi khoa API la {env:...}, gia tri di qua .env.opencode.",
   "mcp": {
     "context7": {
       "type": "local",
@@ -47,7 +47,7 @@
       "enabled": true,
       "timeout": 60000,
       "headers": {
-        "DEFAULT_PARAMETERS": "{\"search_depth\":\"basic\",\"max_results\":3,\"include_answer\":false,\"include_raw_content\":false,\"include_images\":false}"
+        "DEFAULT_PARAMETERS": "{\"search_depth\":\"basic\",\"max_results\":5,\"include_answer\":false,\"include_raw_content\":false,\"include_images\":true}"
       }
     }
   },
