@@ -16,6 +16,7 @@ import { createSql, pingDb } from './db/index.js';
 import { UserStateCache } from './services/user-state.js';
 import { authMiddleware, type AuthFlavor } from './bot/middleware/auth.js';
 import { renderDashboard } from './bot/commands/start.js';
+import { DANH_SACH_LENH, moiTenCua, renderHelp, renderLenhLa } from './bot/commands/help.js';
 import {
   manHinhAgent,
   manHinhModel,
@@ -70,17 +71,40 @@ async function main() {
   const bot = new Bot<Ctx>(cfg.TELEGRAM_BOT_TOKEN);
   bot.use(authMiddleware(cfg.TELEGRAM_ALLOWED_USER_IDS, cfg.TELEGRAM_ADMIN_USER_IDS, log));
 
+  bot.command(moiTenCua('help'), async (ctx) => {
+    await ctx.reply(renderHelp());
+  });
+
   bot.command('start', async (ctx) => {
-    const state = cache.get(ctx.auth.userId);
+    let state = cache.get(ctx.auth.userId);
     let tenProject: string | null = null;
-    if (state.currentProjectId !== null && trangThai.db === 'up') {
-      const rows = await sql<{ name: string }[]>`
-        SELECT name FROM projects WHERE id = ${String(state.currentProjectId)}`;
-      tenProject = rows[0]?.name ?? null;
+
+    if (trangThai.db === 'up') {
+      // V1 co DUNG MOT project. Bat nguoi dung bam /project de chon cai duy nhat
+      // co the chon la mot buoc khong mang thong tin gi. Tu chon, nhung NOI RA —
+      // im lang lam thay doi trang thai la kieu "thong minh" gay kho hieu khi so
+      // project tang len sau nay.
+      if (state.currentProjectId === null) {
+        const ds = await khoPhien.dsProject();
+        const duyNhat = ds.length === 1 ? ds[0] : undefined;
+        if (duyNhat) {
+          state = await cache.set(ctx.auth.userId, { currentProjectId: duyNhat.id });
+          tenProject = duyNhat.name;
+          await ctx.reply(`📁 Chi co mot project nen da tu chon: ${duyNhat.name}`);
+        }
+      }
+      if (tenProject === null && state.currentProjectId !== null) {
+        const duAn = await khoPhien.project(state.currentProjectId);
+        tenProject = duAn?.name ?? null;
+      }
     }
+
     await ctx.reply(
       renderDashboard({ state, tenProject, dbUp: trangThai.db === 'up' }),
     );
+    if (state.currentSessionId === null) {
+      await ctx.reply('Buoc tiep theo: /new de tao phien, roi go cau hoi.');
+    }
   });
 
   bot.command('reload', async (ctx) => {
@@ -106,13 +130,13 @@ async function main() {
     await ctx.reply(mh.van, mh.banPhim ? { reply_markup: mh.banPhim as never } : undefined);
   };
 
-  bot.command('project', async (ctx) => {
+  bot.command(moiTenCua('project'), async (ctx) => {
     if (!(await doiDb(ctx))) return;
     const state = cache.get(ctx.auth.userId);
     await guiManHinh(ctx, manHinhProject(await khoPhien.dsProject(), state.currentProjectId));
   });
 
-  bot.command('sessions', async (ctx) => {
+  bot.command(moiTenCua('sessions'), async (ctx) => {
     if (!(await doiDb(ctx))) return;
     const state = cache.get(ctx.auth.userId);
     await guiManHinh(
@@ -121,7 +145,7 @@ async function main() {
     );
   });
 
-  bot.command('new', async (ctx) => {
+  bot.command(moiTenCua('new'), async (ctx) => {
     if (!(await doiDb(ctx))) return;
     const state = cache.get(ctx.auth.userId);
     if (state.currentProjectId === null) {
@@ -139,7 +163,7 @@ async function main() {
     await ctx.reply(`✅ Da tao phien moi: ${phien.opencodeSessionId}`);
   });
 
-  bot.command('model', async (ctx) => {
+  bot.command(moiTenCua('model'), async (ctx) => {
     const state = cache.get(ctx.auth.userId);
     await guiManHinh(
       ctx,
@@ -150,7 +174,7 @@ async function main() {
     );
   });
 
-  bot.command('agent', async (ctx) => {
+  bot.command(moiTenCua('agent'), async (ctx) => {
     const state = cache.get(ctx.auth.userId);
     await guiManHinh(ctx, manHinhAgent(await opencode.dsAgent(), state.currentAgent));
   });
@@ -269,7 +293,7 @@ async function main() {
     banPhimDuyet,
   );
 
-  bot.command('abort', async (ctx) => {
+  bot.command(moiTenCua('abort'), async (ctx) => {
     if (!(await doiDb(ctx))) return;
     const co = await chay.huy(ctx.auth.userId);
     await ctx.reply(co ? '🛑 Da huy task dang chay.' : 'Ban khong co task nao dang chay.');
@@ -282,7 +306,15 @@ async function main() {
    * thu tu dang ky, va `bot.on('message:text')` khop CA tin nhan bat dau bang `/`.
    */
   bot.on('message:text', async (ctx) => {
-    if (ctx.message.text.startsWith('/')) return;
+    // Lenh khong ton tai PHAI duoc tra loi. Truoc day cho nay `return` im lang,
+    // va lan test dau tien go `/session` (so it) roi thang vao do: bot khong noi
+    // gi ca, khong phan biet duoc voi "bot chet". Im lang la phan hoi te nhat co
+    // the co — nguoi dung khong biet nen doi, nen go lai, hay bao loi.
+    if (ctx.message.text.startsWith('/')) {
+      const go = ctx.message.text.split(/\s+/)[0] ?? '';
+      await ctx.reply(renderLenhLa(go));
+      return;
+    }
     if (!(await doiDb(ctx))) return;
 
     const state = cache.get(ctx.auth.userId);
@@ -350,6 +382,13 @@ async function main() {
     khiLoi: (e) => log.warn({ err: e }, 'luong su kien loi'),
   });
   void luong.chay();
+
+  // Menu lenh lay tu CUNG danh sach voi /help — hai ban chep tay se lech nhau
+  // ngay lan them lenh sau. Khong chan khoi dong neu that bai: day la trang tri,
+  // khong phai chuc nang.
+  await bot.api
+    .setMyCommands(DANH_SACH_LENH.map((l) => ({ command: l.lenh, description: l.moTa })))
+    .catch((e) => log.warn({ err: e }, 'khong dang ky duoc menu lenh'));
 
   trangThai.botDangPolling = true;
   log.info({}, 'bat dau long polling');
