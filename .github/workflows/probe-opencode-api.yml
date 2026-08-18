@@ -41,8 +41,20 @@ jobs:
           $SSH4 "bash /tmp/probe-api.sh" > probe.txt 2>&1 || true
           $SSH4 "cat /tmp/opencode-openapi.json" > opencode-openapi.json 2>/dev/null || echo '{}' > opencode-openapi.json
           $SSH4 "cat /tmp/opencode-events.jsonl" > opencode-events.jsonl 2>/dev/null || true
-          echo "=== tom tat ===" >> "$GITHUB_STEP_SUMMARY"
-          head -c 4000 probe.txt >> "$GITHUB_STEP_SUMMARY"
+
+          # Vong hai: chup luong su kien trong luc mot prompt THAT dang chay.
+          # Vong mot chi bat duoc `server.connected` vi luc do khong co gi xay ra,
+          # ma do moi la thu §17.2 doi: mot luot hoi-dap phat ra su kien nao, theo
+          # thu tu nao. Mat khoang 90 giay.
+          scp -P "$SSH_PORT" -i k4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 \
+            scripts/vpn4/probe-opencode-events.sh "$SSH_USER@$SSH_HOST_VPN4:/tmp/probe-events.sh"
+          $SSH4 "bash /tmp/probe-events.sh" > probe-events.txt 2>&1 || true
+          $SSH4 "cat /tmp/opencode-events-live.jsonl" > opencode-events-live.jsonl 2>/dev/null || true
+
+          echo "=== be mat API ===" >> "$GITHUB_STEP_SUMMARY"
+          head -c 3000 probe.txt >> "$GITHUB_STEP_SUMMARY"
+          echo "=== luong su kien khi chay that ===" >> "$GITHUB_STEP_SUMMARY"
+          tail -c 5000 probe-events.txt >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -51,3 +63,5 @@ jobs:
             probe.txt
             opencode-openapi.json
             opencode-events.jsonl
+            probe-events.txt
+            opencode-events-live.jsonl
