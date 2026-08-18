@@ -55,7 +55,12 @@ services:
     # KHONG o db_net — agent khong duoc thay cong 5433 dan toi Postgres cua headscale.
     networks: [opencode_net, edge]
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:4096/global/health"]
+      # `curl -sS` KHONG kem `-f`: no tra 0 cho MOI ma HTTP ke ca 401, chi khac 0
+      # khi khong ket noi duoc. Do dung la tin hieu song ma healthcheck can —
+      # "server dang lang nghe va tra loi". Con /global/health co doi xac thuc hay
+      # khong thi chua do duoc, va tinh dung dan cua xac thuc da co phep thu rieng
+      # o buoc 5 cua deploy (goi that mot completion).
+      test: ["CMD", "curl", "-sS", "-o", "/dev/null", "--max-time", "5", "http://127.0.0.1:4096/global/health"]
       interval: 30s
       timeout: 5s
       retries: 3
