@@ -25,7 +25,7 @@ ARG OPENCODE_VERSION
 RUN npm i -g "opencode-ai@${OPENCODE_VERSION}" && npm cache clean --force
 
 # Chay HAI lan trong deploy (buoc 4 truoc `up -d`, va buoc 5). Duong dan tuyet doi.
-COPY scripts/verify-opencode-config.js /opt/verify-opencode-config.js
+COPY scripts/verify-opencode-config.cjs /opt/verify-opencode-config.cjs
 
 # Thu muc cau hinh phai ton tai TRUOC khi compose bind-mount mot FILE vao trong no.
 RUN mkdir -p /home/node/.config/opencode && chown -R node:node /home/node/.config

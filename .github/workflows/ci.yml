@@ -43,8 +43,8 @@ jobs:
 
       - name: Kiem cu phap JavaScript
         run: |
-          node --check scripts/sync-models.js
-          node --check scripts/verify-opencode-config.js
+          node --check scripts/sync-models.cjs
+          node --check scripts/verify-opencode-config.cjs
 
       - name: opencode.json.template phai la JSON hop le
         run: python3 -m json.tool opencode.json.template > /dev/null

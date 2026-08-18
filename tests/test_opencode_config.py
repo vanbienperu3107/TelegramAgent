@@ -1,4 +1,4 @@
-"""opencode.json.template va verify-opencode-config.js — ban thi hanh cua §12.1, §27.
+"""opencode.json.template va verify-opencode-config.cjs — ban thi hanh cua §12.1, §27.
 
 Lop loi ma cac test nay chan: OpenCode BO QUA khoa permission khong hop le thay vi
 bao loi. Bon ten bia (`write`, `search`, `apply_patch`, `external`) tung nam trong
@@ -14,7 +14,7 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "opencode.json.template"
-VERIFY = ROOT / "scripts" / "verify-opencode-config.js"
+VERIFY = ROOT / "scripts" / "verify-opencode-config.cjs"
 
 VALID_KEYS = {
     "read", "edit", "glob", "grep", "bash", "task", "skill", "lsp",
@@ -82,7 +82,7 @@ def test_models_de_rong_cho_sync_models_dien(template):
     assert template["provider"]["cliproxy"]["models"] == {}
 
 
-# ─── verify-opencode-config.js ────────────────────────────────────────────────
+# ─── verify-opencode-config.cjs ────────────────────────────────────────────────
 
 def _run_verify(tmp_path, cfg):
     target = tmp_path / "opencode.json"
@@ -106,7 +106,7 @@ def test_verify_qua_voi_cau_hinh_hop_le(tmp_path):
 
 @node
 def test_verify_bat_models_rong(tmp_path):
-    """models rong nghia la sync-models.js khong goi duoc model nao — deploy
+    """models rong nghia la sync-models.cjs khong goi duoc model nao — deploy
     khong duoc coi la thanh cong."""
     cfg = _cfg_hop_le()
     cfg["provider"]["cliproxy"]["models"] = {}

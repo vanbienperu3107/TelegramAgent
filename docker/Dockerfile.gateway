@@ -10,7 +10,7 @@ COPY src ./src
 # dist/ phai chua CA index.js LAN migrate.js: buoc 4 cua deploy chay
 # `--entrypoint node telegram-gateway dist/migrate.js`. Build chi sinh index.js
 # la deploy do dung o buoc migration.
-RUN npm run build && test -f dist/index.js && test -f dist/migrate.js
+RUN npm run build && test -f dist/index.js && test -f dist/db/migrate.js
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
@@ -22,8 +22,8 @@ ENV NODE_OPTIONS=--max-old-space-size=192
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
-# sync-models.js chay bang `docker run --rm --entrypoint node` o buoc 4 deploy.
-COPY scripts/sync-models.js ./scripts/sync-models.js
+# sync-models.cjs chay bang `docker run --rm --entrypoint node` o buoc 4 deploy.
+COPY scripts/sync-models.cjs ./scripts/sync-models.cjs
 
 USER node
 # KHONG khai HEALTHCHECK o day: docker-compose.yml la ban dinh nghia duy nhat,
