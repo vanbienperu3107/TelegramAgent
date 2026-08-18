@@ -23,9 +23,12 @@ import {
   manHinhProject,
   tachModel,
 } from './bot/commands/chon.js';
-import { giaiMa } from './bot/keyboards.js';
+import { banPhimDuyet, giaiMa } from './bot/keyboards.js';
 import { OpenCodeClient } from './services/opencode-client.js';
 import { KhoPhien } from './services/sessions.js';
+import { KhoTask } from './services/tasks.js';
+import { BoChayTask } from './services/task-runner.js';
+import { LuongSuKien } from './services/event-stream.js';
 import { startHealthServer, type HealthState } from './health.js';
 
 type Ctx = Context & AuthFlavor;
@@ -42,6 +45,7 @@ async function main() {
   const cache = new UserStateCache(sql);
   const opencode = new OpenCodeClient(cfg);
   const khoPhien = new KhoPhien(sql, opencode);
+  const khoTask = new KhoTask(sql);
 
   const trangThai: HealthState = { db: 'down', botDangPolling: false, batDau: new Date() };
   const health = startHealthServer(cfg.HEALTH_PORT, () => trangThai);
@@ -53,6 +57,12 @@ async function main() {
   if (trangThai.db === 'up') {
     const n = await cache.reload();
     log.info({ so_dong: n }, 'da nap user_state vao cache');
+    // Gateway co the bi giet giua luot chay (OOM, hoac --force-recreate luc
+    // deploy). Dong task khi do ket o 'running' MAI MAI: khoa mot-task khong bao
+    // gio nha, nguoi dung khong gui duoc gi nua va khong co cach tu go. Don ngay
+    // luc khoi dong, va so luong don duoc la mot tin hieu dang doc trong log.
+    const soTreo = await khoTask.donMoiTaskTreo();
+    if (soTreo > 0) log.warn({ so_task: soTreo }, 'da nha khoa cho task treo tu lan chay truoc');
   } else {
     log.error({}, 'khong ket noi duoc DB luc khoi dong — chay o che do suy giam');
   }
@@ -209,10 +219,89 @@ async function main() {
         await ctx.answerCallbackQuery(`Da chon ${lenh.thamSo}`);
         return;
       }
+      case 'quyen-once':
+      case 'quyen-always':
+      case 'quyen-reject': {
+        if (!(await doiDb(ctx))) return;
+        const task = await khoTask.taskDangChay(ctx.auth.userId);
+        if (!task) {
+          // Nguoi dung co the bam nut cu trong mot tin nhan cu. Noi ro thay vi
+          // gui mot cau tra loi quyen vao mot phien da ket thuc.
+          await ctx.answerCallbackQuery('Task da ket thuc, nut nay khong con tac dung');
+          return;
+        }
+        const traLoi = ({ 'quyen-once': 'once', 'quyen-always': 'always', 'quyen-reject': 'reject' } as const)[
+          lenh.viec
+        ];
+        try {
+          await opencode.traLoiQuyen(task.opencodeSessionId, lenh.thamSo, traLoi);
+          await khoTask.doiTrangThai(task.id, 'running');
+          await ctx.answerCallbackQuery(
+            traLoi === 'reject' ? 'Da tu choi' : traLoi === 'always' ? 'Da cho phep vinh vien' : 'Da cho phep',
+          );
+        } catch (e) {
+          log.error({ err: e }, 'tra loi quyen that bai');
+          await ctx.answerCallbackQuery('Khong gui duoc cau tra loi toi OpenCode');
+        }
+        return;
+      }
       default:
         // `khong-lam-gi` (nut so trang) roi vao day. Van phai tra loi callback,
         // neu khong Telegram hien vong xoay tren nut den khi het han.
         await ctx.answerCallbackQuery();
+    }
+  });
+
+  const chay = new BoChayTask(
+    cfg,
+    opencode,
+    khoTask,
+    {
+      guiTinNhan: async (chatId, van, kb) => {
+        const m = await bot.api.sendMessage(Number(chatId), van, kb ? { reply_markup: kb as never } : undefined);
+        return BigInt(m.message_id);
+      },
+      suaTinNhan: async (chatId, messageId, van, kb) => {
+        await bot.api.editMessageText(Number(chatId), Number(messageId), van, kb ? { reply_markup: kb as never } : undefined);
+      },
+    },
+    log,
+    banPhimDuyet,
+  );
+
+  bot.command('abort', async (ctx) => {
+    if (!(await doiDb(ctx))) return;
+    const co = await chay.huy(ctx.auth.userId);
+    await ctx.reply(co ? '🛑 Da huy task dang chay.' : 'Ban khong co task nao dang chay.');
+  });
+
+  /**
+   * Van ban thuong = mot cau hoi cho agent.
+   *
+   * Dat SAU tat ca cac `bot.command` de khong nuot lenh. grammy phan phoi theo
+   * thu tu dang ky, va `bot.on('message:text')` khop CA tin nhan bat dau bang `/`.
+   */
+  bot.on('message:text', async (ctx) => {
+    if (ctx.message.text.startsWith('/')) return;
+    if (!(await doiDb(ctx))) return;
+
+    const state = cache.get(ctx.auth.userId);
+    if (state.currentSessionId === null) {
+      await ctx.reply('💬 Chua co phien lam viec. Dung /project roi /new de bat dau.');
+      return;
+    }
+
+    const kq = await chay.batDau({
+      telegramUserId: ctx.auth.userId,
+      telegramChatId: BigInt(ctx.chat.id),
+      sessionID: state.currentSessionId,
+      van: ctx.message.text,
+      providerID: state.currentProviderId,
+      modelID: state.currentModelId,
+      agent: state.currentAgent,
+    });
+    if (!kq.ok) {
+      await ctx.reply('⏳ Ban dang co mot task chay do. Doi no xong hoac dung /abort.');
     }
   });
 
@@ -234,6 +323,7 @@ async function main() {
   const dungLai = async (tinHieu: string) => {
     log.info({ tinHieu }, 'dang dung');
     clearInterval(nhipDb);
+    luong.dong();
     trangThai.botDangPolling = false;
     await bot.stop();
     health.close();
@@ -242,6 +332,24 @@ async function main() {
   };
   process.once('SIGTERM', () => void dungLai('SIGTERM'));
   process.once('SIGINT', () => void dungLai('SIGINT'));
+
+  /**
+   * Mot luong su kien duy nhat cho ca Gateway.
+   *
+   * `khiNoiLai` KHONG phai cho de ghi log: luong khong co replay (da do), nen moi
+   * su kien phat ra trong luc dut la mat vinh vien — ke ca `session.idle`. Day la
+   * cho DUY NHAT de doi chieu lai, va bo qua no la mot task treo mai o lan dut
+   * ket noi dau tien.
+   */
+  const luong = new LuongSuKien(cfg, opencode, {
+    khiCoSuKien: (ev) => chay.nhanSuKien(ev),
+    khiNoiLai: async (lanThu) => {
+      log.warn({ lanThu }, 'noi lai luong su kien — dang doi chieu trang thai');
+      await chay.doiChieuSauKhiNoiLai();
+    },
+    khiLoi: (e) => log.warn({ err: e }, 'luong su kien loi'),
+  });
+  void luong.chay();
 
   trangThai.botDangPolling = true;
   log.info({}, 'bat dau long polling');
