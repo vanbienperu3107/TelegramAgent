@@ -50,6 +50,18 @@ services:
     volumes:
       - ./opencode.json:/home/node/.config/opencode/opencode.json:ro
       - ./workspace:/workspace
+      # DU LIEU CUA OPENCODE — phien, lich su message, quyen da duyet 'always'.
+      #
+      # Khong co dong nay thi MOI LAN DEPLOY xoa sach moi phien: buoc 4 chay
+      # `up -d --force-recreate opencode-server`, container moi khong con he thong
+      # tep cu, va phien tao truoc do bien mat. Bang `opencode_sessions` cua bot
+      # van tro toi chung, nen cau hoi tiep theo tra HTTP 404 "Session not found"
+      # — dung loi nguoi dung gap ngay 2026-08-18.
+      #
+      # Quyen bam "cho phep vinh vien" cung nam trong day. Mat no nghia la nguoi
+      # dung phai duyet lai tu dau sau moi lan deploy, va loi hua "vinh vien" o
+      # nhan nut thanh sai.
+      - opencode_data:/home/node/.local/share/opencode
     # Thu muc lam viec cua agent = DUNG thu muc project, khong phai thu muc cha.
     #
     # `POST /session` KHONG co truong thu muc (da doi chieu voi dac ta da tai ve:
@@ -107,6 +119,12 @@ services:
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  # Ten tuong minh, khong de compose tu dat theo ten thu muc: doi thu muc trien
+  # khai la mat het phien.
+  opencode_data:
+    name: opencode_data
 
 networks:
   opencode_net:

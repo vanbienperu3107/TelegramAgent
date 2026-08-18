@@ -181,3 +181,28 @@ def test_working_dir_la_bien_bat_buoc(compose):
     """Thieu bien -> compose phai TU CHOI, khong duoc lang le dung mac dinh."""
     wd = compose["services"]["opencode-server"]["working_dir"]
     assert ":?" in wd, "phai dung dang ${VAR:?...} de compose tu choi khi thieu"
+
+
+def test_du_lieu_opencode_duoc_giu_qua_deploy(services, compose):
+    """Phien cua OpenCode phai song sot qua `--force-recreate`.
+
+    Khong co volume nay thi MOI LAN DEPLOY xoa sach moi phien: buoc 4 chay
+    `up -d --force-recreate opencode-server`, container moi khong con he thong
+    tep cu. Bang `opencode_sessions` cua bot van tro toi chung, nen cau hoi tiep
+    theo tra HTTP 404 "Session not found" — dung loi nguoi dung gap 2026-08-18.
+
+    Quyen bam "cho phep vinh vien" cung nam trong thu muc do. Mat no nghia la
+    phai duyet lai tu dau sau moi lan deploy, va loi hua "vinh vien" o nhan nut
+    thanh sai.
+    """
+    mounts = services["opencode-server"].get("volumes", [])
+    assert any(
+        "/home/node/.local/share/opencode" in m for m in mounts
+    ), "opencode-server phai gan volume cho thu muc du lieu"
+    assert "opencode_data" in (compose.get("volumes") or {}), "phai khai volume opencode_data"
+
+
+def test_volume_co_ten_tuong_minh(compose):
+    """Khong de compose tu dat ten theo thu muc trien khai: doi thu muc la mat het
+    phien, va trieu chung se giong het loi 404 o tren."""
+    assert (compose["volumes"]["opencode_data"] or {}).get("name") == "opencode_data"

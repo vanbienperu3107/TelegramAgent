@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Config } from '../src/config.js';
 import type { OpenCodeClient } from '../src/services/opencode-client.js';
 import { BoChayTask, chiaTinNhan } from '../src/services/task-runner.js';
+import { LoiOpenCode } from '../src/services/opencode-client.js';
 import { DaCoTaskDangChay, type KhoTask, type Task } from '../src/services/tasks.js';
 
 const cfg = { DEFAULT_PROVIDER: 'cliproxy', DEFAULT_MODEL: 'm', DEFAULT_AGENT: 'build' } as Config;
@@ -338,5 +339,55 @@ describe('chia tin nhan dai', () => {
     const manh = chiaTinNhan('x'.repeat(250), 100);
     expect(manh).toHaveLength(3);
     for (const m of manh) expect(m.length).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('phien chet ben OpenCode', () => {
+  it('404 tra ve ly do rieng, khong nem chuoi JSON tho vao mat nguoi dung', async () => {
+    // Xay ra that ngay 2026-08-18: deploy `--force-recreate opencode-server` xoa
+    // sach moi phien (luc do chua co volume), nhung bang cua bot van tro toi
+    // chung. Nguoi dung nhan nguyen van:
+    //   {"name":"NotFoundError","data":{"message":"Session not found: ses_..."}}
+    // — khong biet minh lam sai gi va cung khong the doan duoc phai lam gi.
+    const { bo, tg } = dungBo({
+      client: {
+        guiPrompt: vi.fn(async () => {
+          throw new LoiOpenCode(404, '/session/ses_1/prompt_async', 'Session not found');
+        }),
+      },
+    });
+    const kq = await batDau(bo);
+    expect(kq).toEqual({ ok: false, lyDo: 'phien-da-chet' });
+
+    const van = tg.suaTinNhan.mock.calls.at(-1)?.[2] ?? '';
+    expect(van).not.toContain('NotFoundError');
+    expect(van).toMatch(/phien moi/i);
+  });
+
+  it('van NHA KHOA khi phien chet', async () => {
+    const { bo, kho } = dungBo({
+      client: {
+        guiPrompt: vi.fn(async () => {
+          throw new LoiOpenCode(404, '/x', 'Session not found');
+        }),
+      },
+    });
+    await batDau(bo);
+    expect(bo.soTaskDangChay()).toBe(0);
+    expect(kho.ketThuc).toHaveBeenCalled();
+  });
+
+  it('loi KHAC 404 van bao nguyen van va nem len tren', async () => {
+    // 404 la trang thai binh thuong co duong xu ly; 500 thi khong — nuot no di la
+    // giau mot su co that.
+    const { bo, tg } = dungBo({
+      client: {
+        guiPrompt: vi.fn(async () => {
+          throw new LoiOpenCode(500, '/x', 'noi bo hong');
+        }),
+      },
+    });
+    await expect(batDau(bo)).rejects.toBeInstanceOf(LoiOpenCode);
+    expect(tg.suaTinNhan.mock.calls.at(-1)?.[2] ?? '').toContain('500');
   });
 });
