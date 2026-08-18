@@ -67,6 +67,7 @@ export class BoChayTask {
     providerID?: string | null;
     modelID?: string | null;
     agent?: string | null;
+    dinhKem?: Array<{ type: 'file'; mime: string; url: string; filename?: string }>;
   }): Promise<{ ok: true; task: Task } | { ok: false; lyDo: 'da-co-task' | 'phien-da-chet' }> {
     // Sinh truoc de ghi so va gui prompt dung mot id.
     const messageID = `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
@@ -131,6 +132,7 @@ export class BoChayTask {
         ...(doiSo.providerID ? { providerID: doiSo.providerID } : {}),
         ...(doiSo.modelID ? { modelID: doiSo.modelID } : {}),
         ...(doiSo.agent ? { agent: doiSo.agent } : {}),
+        ...(doiSo.dinhKem?.length ? { dinhKem: doiSo.dinhKem } : {}),
       });
     } catch (e) {
       // Gui prompt hong thi PHAI nha khoa ngay. Neu khong, nguoi dung bi chan

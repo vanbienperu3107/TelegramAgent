@@ -26,6 +26,8 @@ import {
   tachModel,
 } from './bot/commands/chon.js';
 import { banPhimDuyet, giaiMa } from './bot/keyboards.js';
+import { boDanhDau, markdownSangHtml } from './bot/dinh-dang.js';
+import { dungFilePart, kiemKichThuoc, vanMacDinh, type DinhKem } from './bot/dinh-kem.js';
 import { moTaLoi } from './bot/loi.js';
 import { OpenCodeClient } from './services/opencode-client.js';
 import { KhoPhien } from './services/sessions.js';
@@ -278,17 +280,55 @@ async function main() {
     }
   });
 
+  /**
+   * Gui/sua tin nhan co DINH DANG, kem duong lui.
+   *
+   * Agent tra loi bang Markdown. Gui khong kem `parse_mode` thi ```text va **dam**
+   * hien nguyen xi giua cau tra loi — xau va kho doc. Nhung bat `parse_mode` la
+   * nhan rui ro: van ban cua model la tuy y, mot the khong dong la Telegram tra
+   * 400 va CA TIN NHAN bien mat.
+   *
+   * Nen: thu HTML truoc, that bai thi gui lai ban da bo danh dau. Khong bao gio
+   * de nguoi dung mat cau tra loi chi vi mot dau nho.
+   */
+  const guiCoDinhDang = async (
+    lam: (van: string, parseMode?: 'HTML') => Promise<number | void>,
+    van: string,
+  ): Promise<number | void> => {
+    try {
+      return await lam(markdownSangHtml(van), 'HTML');
+    } catch (e) {
+      log.warn({ err: e }, 'Telegram tu choi HTML — gui lai dang tho');
+      return lam(boDanhDau(van));
+    }
+  };
+
   const chay = new BoChayTask(
     cfg,
     opencode,
     khoTask,
     {
       guiTinNhan: async (chatId, van, kb) => {
-        const m = await bot.api.sendMessage(Number(chatId), van, kb ? { reply_markup: kb as never } : undefined);
-        return BigInt(m.message_id);
+        const id = await guiCoDinhDang(async (noiDung, pm) => {
+          const m = await bot.api.sendMessage(Number(chatId), noiDung, {
+            ...(pm ? { parse_mode: pm } : {}),
+            ...(kb ? { reply_markup: kb as never } : {}),
+            // Xem truoc lien ket lam tin nhan tra loi dai gap doi va day noi dung
+            // len khoi man hinh dien thoai.
+            link_preview_options: { is_disabled: true },
+          });
+          return m.message_id;
+        }, van);
+        return BigInt(id as number);
       },
       suaTinNhan: async (chatId, messageId, van, kb) => {
-        await bot.api.editMessageText(Number(chatId), Number(messageId), van, kb ? { reply_markup: kb as never } : undefined);
+        await guiCoDinhDang(async (noiDung, pm) => {
+          await bot.api.editMessageText(Number(chatId), Number(messageId), noiDung, {
+            ...(pm ? { parse_mode: pm } : {}),
+            ...(kb ? { reply_markup: kb as never } : {}),
+            link_preview_options: { is_disabled: true },
+          });
+        }, van);
       },
     },
     log,
@@ -359,21 +399,18 @@ async function main() {
   });
 
   /**
-   * Van ban thuong = mot cau hoi cho agent.
+   * Duong giao viec DUY NHAT cho agent — van ban lan dinh kem deu di qua day.
    *
-   * Dat SAU tat ca cac `bot.command` de khong nuot lenh. grammy phan phoi theo
-   * thu tu dang ky, va `bot.on('message:text')` khop CA tin nhan bat dau bang `/`.
+   * Tach ra thay vi chep hai nhanh: nhanh dinh kem can y het nhanh van ban (kiem
+   * DB, kiem phien, thu lai khi phien chet, dat tua de) va hai ban chep se lech
+   * nhau ngay lan sua sau. Da co tien le trong chinh du an nay: `/dondep` nam
+   * trong danh sach lenh nhung thieu mot dong noi vao bot.
    */
-  bot.on('message:text', async (ctx) => {
-    // Lenh khong ton tai PHAI duoc tra loi. Truoc day cho nay `return` im lang,
-    // va lan test dau tien go `/session` (so it) roi thang vao do: bot khong noi
-    // gi ca, khong phan biet duoc voi "bot chet". Im lang la phan hoi te nhat co
-    // the co — nguoi dung khong biet nen doi, nen go lai, hay bao loi.
-    if (ctx.message.text.startsWith('/')) {
-      const go = ctx.message.text.split(/\s+/)[0] ?? '';
-      await ctx.reply(renderLenhLa(go));
-      return;
-    }
+  const giaoViecChoAgent = async (
+    ctx: Ctx,
+    van: string,
+    dinhKem?: Array<{ type: 'file'; mime: string; url: string; filename?: string }>,
+  ): Promise<void> => {
     if (!(await doiDb(ctx))) return;
 
     let state = cache.get(ctx.auth.userId);
@@ -382,15 +419,17 @@ async function main() {
       return;
     }
 
+    const chatId = BigInt(ctx.chat!.id);
     const giaoViec = async (sessionID: string) =>
       chay.batDau({
         telegramUserId: ctx.auth.userId,
-        telegramChatId: BigInt(ctx.chat.id),
+        telegramChatId: chatId,
         sessionID,
-        van: ctx.message.text,
+        van,
         providerID: state.currentProviderId,
         modelID: state.currentModelId,
         agent: state.currentAgent,
+        ...(dinhKem?.length ? { dinhKem } : {}),
       });
 
     let phien = state.currentSessionId;
@@ -425,8 +464,107 @@ async function main() {
     // Dat tua de phien theo cau hoi dau tien. KHONG `await` tren duong di: day la
     // viec lam dep danh sach, khong duoc lam cham cau tra loi them mot vong 307 ms.
     void khoPhien
-      .datTuaDeTuPrompt(phien, ctx.message.text)
+      .datTuaDeTuPrompt(phien, van)
       .catch((e) => log.warn({ err: e }, 'khong dat duoc tua de phien'));
+  };
+
+  /**
+   * Tai mot dinh kem ve va dung `FilePartInput`.
+   *
+   * Tai VE roi ma hoa base64 thay vi dua URL cua Telegram cho OpenCode: URL do
+   * chua TOKEN BOT trong duong dan — dua di la lo token — va chi song vai gio.
+   */
+  const layDinhKem = async (ctx: Ctx, k: DinhKem) => {
+    const kiem = kiemKichThuoc(k, cfg.MAX_INPUT_ATTACHMENT_MB);
+    if (!kiem.ok) {
+      await ctx.reply(`📎 ${kiem.lyDo}`);
+      return null;
+    }
+    const tep = await ctx.api.getFile(k.fileId);
+    if (!tep.file_path) {
+      await ctx.reply('📎 Telegram khong tra ve duong dan tep. Thu gui lai giup toi.');
+      return null;
+    }
+    const res = await fetch(
+      `https://api.telegram.org/file/bot${cfg.TELEGRAM_BOT_TOKEN}/${tep.file_path}`,
+    );
+    if (!res.ok) {
+      await ctx.reply(`📎 Khong tai duoc tep tu Telegram (HTTP ${res.status}).`);
+      return null;
+    }
+    return dungFilePart(k, Buffer.from(await res.arrayBuffer()));
+  };
+
+  /**
+   * ANH va TEP dinh kem.
+   *
+   * Truoc day KHONG co handler nao cho chung: gui anh vao bot thi roi vao hu
+   * khong, khong mot cau tra loi. Day la lan thu tu cung mot lop loi (im lang)
+   * trong mot ngay, nen moi nhanh o duoi deu phai tra loi.
+   */
+  bot.on(['message:photo', 'message:document'], async (ctx) => {
+    const anh = ctx.message.photo;
+    const tep = ctx.message.document;
+
+    let k: DinhKem;
+    if (anh && anh.length > 0) {
+      // `photo` la mang cac kich co; ban CUOI la to nhat. Lay ban nho thi model
+      // nhan mot buc anh mo va tra loi sai ma khong ai biet vi sao.
+      const to = anh[anh.length - 1]!;
+      k = {
+        loai: 'photo',
+        fileId: to.file_id,
+        ...(to.file_size !== undefined ? { kichThuoc: to.file_size } : {}),
+      };
+    } else if (tep) {
+      k = {
+        loai: 'document',
+        fileId: tep.file_id,
+        ...(tep.file_size !== undefined ? { kichThuoc: tep.file_size } : {}),
+        ...(tep.file_name !== undefined ? { tenTep: tep.file_name } : {}),
+        ...(tep.mime_type !== undefined ? { mime: tep.mime_type } : {}),
+      };
+    } else {
+      await ctx.reply('📎 Khong doc duoc dinh kem nay.');
+      return;
+    }
+
+    const part = await layDinhKem(ctx, k);
+    if (!part) return; // layDinhKem da tra loi ly do cu the
+
+    // Chu thich cua nguoi dung la cau hoi that; khong co thi dung cau nhac mac
+    // dinh — `parts` phai co phan van ban de model biet lam gi voi tep.
+    await giaoViecChoAgent(ctx, ctx.message.caption?.trim() || vanMacDinh(k), [part]);
+  });
+
+  /**
+   * Cac loai tin nhan CHUA ho tro. Noi ro thay vi im lang.
+   *
+   * Im lang o day khong phan biet duoc voi "bot chet" — sai lam da lap lai ba lan
+   * trong mot ngay.
+   */
+  bot.on(['message:video', 'message:voice', 'message:audio', 'message:sticker'], async (ctx) => {
+    await ctx.reply(
+      '📎 Bot chua ho tro loai nay. Hien nhan duoc: van ban, anh, va tep (document).',
+    );
+  });
+
+  /**
+   * Van ban thuong = mot cau hoi cho agent.
+   *
+   * Dat SAU tat ca cac `bot.command` de khong nuot lenh. grammy phan phoi theo
+   * thu tu dang ky, va `bot.on('message:text')` khop CA tin nhan bat dau bang `/`.
+   */
+  bot.on('message:text', async (ctx) => {
+    // Lenh khong ton tai PHAI duoc tra loi. Truoc day cho nay `return` im lang,
+    // va lan test dau tien go `/session` (so it) roi thang vao do: bot khong noi
+    // gi ca, khong phan biet duoc voi "bot chet".
+    if (ctx.message.text.startsWith('/')) {
+      const go = ctx.message.text.split(/\s+/)[0] ?? '';
+      await ctx.reply(renderLenhLa(go));
+      return;
+    }
+    await giaoViecChoAgent(ctx, ctx.message.text);
   });
 
   bot.catch(async (err) => {
