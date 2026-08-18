@@ -34,7 +34,11 @@ jobs:
           install -m 600 /dev/null k4 && echo "$SSH_KEY" > k4
           install -m 644 /dev/null kh4 && echo "$VPN4_HOST_KEY_B64" | base64 -d > kh4
           SSH4="ssh -p $SSH_PORT -i k4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 $SSH_USER@$SSH_HOST_VPN4"
-          $SSH4 "bash /opt/opencode/scripts/vpn4/probe-opencode-api.sh" > probe.txt 2>&1 || true
+          # Gui script tu runner thay vi dua vao ban tren vpn4: /opt/opencode chi
+          # duoc cap nhat khi deploy chay, ma do API la viec doc lap voi deploy.
+          scp -P "$SSH_PORT" -i k4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=kh4 \
+            scripts/vpn4/probe-opencode-api.sh "$SSH_USER@$SSH_HOST_VPN4:/tmp/probe-api.sh"
+          $SSH4 "bash /tmp/probe-api.sh" > probe.txt 2>&1 || true
           $SSH4 "cat /tmp/opencode-openapi.json" > opencode-openapi.json 2>/dev/null || echo '{}' > opencode-openapi.json
           $SSH4 "cat /tmp/opencode-events.jsonl" > opencode-events.jsonl 2>/dev/null || true
           echo "=== tom tat ===" >> "$GITHUB_STEP_SUMMARY"
