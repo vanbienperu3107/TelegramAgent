@@ -72,7 +72,7 @@ def used_names(script):
     """Ten bien duoc DOC trong script: $VAR va ${VAR...}."""
     script = bo_comment(script)
     out = set()
-    for m in re.finditer(r"\$\{([A-Za-z_][A-Za-z0-9_]*)[:\-}]", script):
+    for m in re.finditer(r"\$\{([A-Za-z_][A-Za-z0-9_]*)", script):
         out.add(m.group(1))
     for m in re.finditer(r"\$([A-Za-z_][A-Za-z0-9_]*)", script):
         out.add(m.group(1))
@@ -248,7 +248,12 @@ def main():
         text = path.read_text(encoding="utf-8")
         doc = yaml.safe_load(text) or {}
 
-        scripts = moi_script(doc)
+        # BO CHU THICH MOT LAN, ngay tai nguon. Moi phep kiem duoi day tim mot
+        # MAU trong script, va chu thich giai thich vi sao khong duoc viet mau do
+        # thi chua luon mau do — lop loi tu-to-cao, da lam hong CI nhieu lan.
+        # Loc o day thay vi trong tung phep kiem de khong ai them phep kiem moi ma
+        # quen loc.
+        scripts = bo_comment(moi_script(doc))
         check_l3_inspect(name, scripts, loi)
         check_l4_tmpfile(name, scripts, loi)
         # Tham chieu secret nam trong khoi `env:`, khong nam trong script — cai nay
@@ -258,7 +263,7 @@ def main():
         for step in steps_of(doc):
             label = step.get("name") or step.get("id") or "<step khong ten>"
             if step.get("uses", "").startswith(SSH_ACTION):
-                script = (step.get("with") or {}).get("script") or ""
+                script = bo_comment((step.get("with") or {}).get("script") or "")
                 check_l1(name, label, script, loi)
                 check_l2(name, label, script, loi)
                 check_l4_env(name, label, script, step, loi)
@@ -266,7 +271,7 @@ def main():
                 if (step.get("with") or {}).get("script_stop") is not True:
                     loi.append("%s: %s thieu script_stop: true" % (name, label))
             elif "run" in step:
-                check_l4_run(name, label, step["run"], step, loi)
+                check_l4_run(name, label, bo_comment(step["run"]), step, loi)
 
     if loi:
         for dong in loi:
