@@ -6,6 +6,7 @@ dac ta; mot ten bia lam agent chay theo mac dinh cua OpenCode ma khong ai biet, 
 "mac dinh" co the la allow.
 """
 import json
+import re
 import pathlib
 import shutil
 import subprocess
@@ -36,7 +37,21 @@ def test_template_la_json_hop_le(template):
 
 
 def test_du_13_khoa_permission(template):
-    assert set(template["permission"]) == VALID_KEYS
+    """13 khoa loi phai co DU. Khoa THEM chi duoc la glob cua tool MCP.
+
+    Truoc day phep kiem la dang thuc tuyet doi. No dung khi chua co MCP, nhung
+    quyen cua tool MCP (`context7_*`, `exa_*`...) la khoa hop le ma OpenCode
+    hieu — cam chung nghia la khong dung duoc MCP nao. Doi lai la khong duoc:
+    dang thuc tuyet doi cung chan viec BO SOT mot khoa loi, va do moi la thu
+    nguy hiem. Nen giu ca hai: du 13, va moi khoa them phai co hinh dang glob.
+    """
+    khoa = set(template["permission"])
+    thieu = VALID_KEYS - khoa
+    assert not thieu, "thieu khoa permission loi: %s" % sorted(thieu)
+    for them in sorted(khoa - VALID_KEYS):
+        assert re.fullmatch(r"[a-z0-9_]+_\*", them), (
+            "khoa permission la: %s (chi chap nhan glob cua tool MCP)" % them
+        )
 
 
 def test_khong_co_ten_khoa_bia(template):
@@ -56,11 +71,22 @@ def test_co_khoi_lsp_tat_server(template):
     assert template["lsp"]["typescript"]["disabled"] is True
 
 
-def test_duong_ra_internet_deu_phai_hoi(template):
+def test_duong_ra_internet_la_quyet_dinh_TUONG_MINH(template):
     """`bash: ask` KHONG chan duoc duong ra Internet: agent co tool webfetch va
-    websearch rieng, chay khong can shell."""
-    for key in ("webfetch", "websearch", "external_directory"):
-        assert template["permission"][key] == "ask"
+    websearch rieng, chay khong can shell.
+
+    Nguoi dung da chon "allow" cho webfetch/websearch ngay 2026-08-18 de cac MCP
+    tim kiem chay tron. Danh doi da biet va da noi ro: agent goi duoc URL tuy y
+    ma khong hoi, tuc no co the mang noi dung workspace ra ngoai.
+
+    Phep kiem nay khong con khang dinh "phai hoi" — no khang dinh gia tri la MOT
+    TRONG CAC GIA TRI DA CAN NHAC, de mot lan sua tay vo tinh khong am tham noi
+    rong them. `external_directory` van phai hoi: no la duong ra khoi workspace,
+    khac han duong ra Internet.
+    """
+    for key in ("webfetch", "websearch"):
+        assert template["permission"][key] in ("ask", "allow")
+    assert template["permission"]["external_directory"] == "ask"
 
 
 def test_bash_map_co_du_mau_deny(template):
