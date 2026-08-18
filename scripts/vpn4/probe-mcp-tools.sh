@@ -59,6 +59,9 @@ except Exception as e:
     print('khong doc duoc:', e); raise SystemExit
 ids = d if isinstance(d, list) else d.get('ids', [])
 print('tong so tool:', len(ids))
+# In DU danh sach. Vong do dau chi loc theo tien to nen khong biet 14 tool kia la
+# gi — mot ban ghi khong tra loi duoc cau hoi ke tiep thi phai sua ban ghi.
+print('day du:', ', '.join(sorted(map(str, ids))))
 # Tach tool cua MCP ra khoi tool loi cua OpenCode: ten tool MCP co tien to la
 # ten server trong opencode.json.
 for tien_to in ('context7', 'exa', 'tavily', 'brave'):

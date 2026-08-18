@@ -29,6 +29,25 @@ RUN apt-get update \
 ARG OPENCODE_VERSION
 RUN npm i -g "opencode-ai@${OPENCODE_VERSION}" && npm cache clean --force
 
+# MCP server cuc bo — CAI LUC BUILD, khong `npx -y` luc chay.
+#
+# Do duoc 2026-08-18: ca context7 lan exa deu `status=failed, Operation timed out
+# after 15000ms`. `npx -y` phai tai goi tu registry MOI LAN container khoi dong —
+# khong cache npm, may o Peru, va 15 giay la khong du. OpenCode nuot loi nay IM
+# LANG: khong log, khong canh bao, agent chi don gian khong co tool va tra loi
+# "minh khong lam duoc". Do la trieu chung nguoi dung gap khi xin hinh anh.
+#
+# Cai luc build doi ba thu: khong phu thuoc mang luc khoi dong, khong ton thoi
+# gian moi lan restart, va phien ban duoc ghim (tai lap duoc).
+#
+# `command -v` la phep kiem BAT BUOC, khong phai trang tri: neu ten binary khac
+# ten goi thi build DUNG NGAY o day, thay vi im lang thanh mot MCP chet ma chi
+# phat hien duoc bang cach do that.
+RUN npm i -g @upstash/context7-mcp exa-mcp-server \
+ && command -v context7-mcp \
+ && command -v exa-mcp-server \
+ && npm cache clean --force
+
 # Chay HAI lan trong deploy (buoc 4 truoc `up -d`, va buoc 5). Duong dan tuyet doi.
 COPY scripts/verify-opencode-config.cjs /opt/verify-opencode-config.cjs
 
