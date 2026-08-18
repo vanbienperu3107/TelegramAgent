@@ -75,9 +75,16 @@ function check(path) {
     return problems;
   }
 
-  // 3. Moi ten khoa thuoc danh sach hop le.
+  // 3. Moi ten khoa thuoc danh sach hop le, HOAC la glob quyen cua tool MCP.
+  //
+  // Glob dang `context7_*` / `exa_*` la khoa OpenCode hieu, dung de cap quyen cho
+  // tool do MCP server cung cap. Cam chung nghia la khong dung duoc MCP nao. Nhung
+  // van phai kiem HINH DANG: mot khoa go sai (vi du "webfech") khong duoc lang le
+  // roi vao nhanh "chac la MCP" — do dung la kieu loi ma phep kiem nay sinh ra de
+  // bat, vi OpenCode BO QUA khoa la ma khong noi gi.
+  const LA_GLOB_MCP = /^[a-z0-9_]+_\*$/;
   for (const key of Object.keys(perm)) {
-    if (!VALID_KEYS.includes(key)) {
+    if (!VALID_KEYS.includes(key) && !LA_GLOB_MCP.test(key)) {
       problems.push(`3. khoa permission khong hop le: "${key}" (OpenCode se BO QUA im lang)`);
     }
   }

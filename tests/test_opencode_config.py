@@ -6,6 +6,7 @@ dac ta; mot ten bia lam agent chay theo mac dinh cua OpenCode ma khong ai biet, 
 "mac dinh" co the la allow.
 """
 import json
+import re
 import pathlib
 import shutil
 import subprocess
@@ -36,7 +37,21 @@ def test_template_la_json_hop_le(template):
 
 
 def test_du_13_khoa_permission(template):
-    assert set(template["permission"]) == VALID_KEYS
+    """13 khoa loi phai co DU. Khoa THEM chi duoc la glob cua tool MCP.
+
+    Truoc day phep kiem la dang thuc tuyet doi. No dung khi chua co MCP, nhung
+    quyen cua tool MCP (`context7_*`, `exa_*`...) la khoa hop le ma OpenCode
+    hieu — cam chung nghia la khong dung duoc MCP nao. Doi lai la khong duoc:
+    dang thuc tuyet doi cung chan viec BO SOT mot khoa loi, va do moi la thu
+    nguy hiem. Nen giu ca hai: du 13, va moi khoa them phai co hinh dang glob.
+    """
+    khoa = set(template["permission"])
+    thieu = VALID_KEYS - khoa
+    assert not thieu, "thieu khoa permission loi: %s" % sorted(thieu)
+    for them in sorted(khoa - VALID_KEYS):
+        assert re.fullmatch(r"[a-z0-9_]+_\*", them), (
+            "khoa permission la: %s (chi chap nhan glob cua tool MCP)" % them
+        )
 
 
 def test_khong_co_ten_khoa_bia(template):
@@ -56,11 +71,22 @@ def test_co_khoi_lsp_tat_server(template):
     assert template["lsp"]["typescript"]["disabled"] is True
 
 
-def test_duong_ra_internet_deu_phai_hoi(template):
+def test_duong_ra_internet_la_quyet_dinh_TUONG_MINH(template):
     """`bash: ask` KHONG chan duoc duong ra Internet: agent co tool webfetch va
-    websearch rieng, chay khong can shell."""
-    for key in ("webfetch", "websearch", "external_directory"):
-        assert template["permission"][key] == "ask"
+    websearch rieng, chay khong can shell.
+
+    Nguoi dung da chon "allow" cho webfetch/websearch ngay 2026-08-18 de cac MCP
+    tim kiem chay tron. Danh doi da biet va da noi ro: agent goi duoc URL tuy y
+    ma khong hoi, tuc no co the mang noi dung workspace ra ngoai.
+
+    Phep kiem nay khong con khang dinh "phai hoi" — no khang dinh gia tri la MOT
+    TRONG CAC GIA TRI DA CAN NHAC, de mot lan sua tay vo tinh khong am tham noi
+    rong them. `external_directory` van phai hoi: no la duong ra khoi workspace,
+    khac han duong ra Internet.
+    """
+    for key in ("webfetch", "websearch"):
+        assert template["permission"][key] in ("ask", "allow")
+    assert template["permission"]["external_directory"] == "ask"
 
 
 def test_bash_map_co_du_mau_deny(template):
@@ -171,3 +197,65 @@ def test_verify_bat_file_rong(tmp_path):
     """`printf '{}' > opencode.json` o buoc 4 tao file hop le nhung khong co
     models — phai bi bat, khong duoc coi la dat."""
     assert _run_verify(tmp_path, {}).returncode != 0
+
+
+def test_khong_co_bi_mat_viet_thang_trong_khuon():
+    """Repo nay PUBLIC. Mot khoa viet thang vao khuon la mot khoa da lo.
+
+    Cac khoa MCP den tu cau hinh may ca nhan cua nguoi dung, noi chung nam duoi
+    dang van ban ro. Cho nay la ranh gioi giua "may ca nhan" va "repo cong khai".
+    """
+    tho = (ROOT / "opencode.json.template").read_text(encoding="utf-8")
+    mau_kha_nghi = ("sk-", "tvly-", "BSA", "EXA_API_KEY\":\" ")
+    for m in mau_kha_nghi:
+        assert m not in tho, "khuon chua chuoi giong bi mat: %s" % m
+
+    d = json.loads(tho)
+
+    def di(nut, duong=""):
+        if isinstance(nut, dict):
+            for k, v in nut.items():
+                di(v, "%s.%s" % (duong, k))
+        elif isinstance(nut, str):
+            # Moi gia tri cua truong ten *_KEY / apiKey phai la giu cho, khong
+            # duoc la gia tri that.
+            if duong.lower().endswith(("api_key", "apikey")):
+                assert nut.startswith("{env:"), "%s khong phai giu cho: %s" % (duong, nut[:12])
+
+    di(d)
+
+
+def test_moi_giu_cho_env_deu_co_trong_khuon_env():
+    """Giu cho khong co bien tuong ung -> chuoi rong, khong loi, khong canh bao.
+
+    Da xay ra that voi CLIPROXY_BASE_URL: `GET /config` tra "baseURL":"" tren
+    container dang chay trong khi moi phep kiem deu xanh.
+    """
+    import re
+
+    tho = (ROOT / "opencode.json.template").read_text(encoding="utf-8")
+    giu_cho = set(re.findall(r"\{env:([A-Z0-9_]+)\}", tho))
+    co = {
+        d.split("=", 1)[0].strip()
+        for d in (ROOT / ".env.opencode.example").read_text(encoding="utf-8").splitlines()
+        if d.strip() and not d.strip().startswith("#") and "=" in d
+    }
+    thieu = sorted(giu_cho - co)
+    assert not thieu, "giu cho khong co trong .env.opencode.example: %s" % thieu
+
+
+def test_mcp_cuc_bo_chay_duoc_tren_linux():
+    """Lenh cua MCP server phai chay duoc trong container Debian.
+
+    Cau hinh goc den tu may Windows va dung `cmd.exe /c npx`. Trong container thi
+    khong co cmd.exe — MCP server se khong bao gio khoi dong duoc, va trieu chung
+    la agent im lang khong dung duoc tool do chu khong phai mot loi ro rang.
+    """
+    d = json.loads((ROOT / "opencode.json.template").read_text(encoding="utf-8"))
+    for ten, cau_hinh in (d.get("mcp") or {}).items():
+        if cau_hinh.get("type") != "local":
+            continue
+        lenh = cau_hinh.get("command") or []
+        assert lenh, "%s thieu command" % ten
+        assert lenh[0] != "cmd.exe", "%s dung cmd.exe — khong co trong container Linux" % ten
+        assert lenh[0] in ("npx", "node", "bun"), "%s dung lenh la: %s" % (ten, lenh[0])

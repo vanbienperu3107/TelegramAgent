@@ -37,7 +37,15 @@ services:
     image: ghcr.io/vanbienperu3107/opencode-server:${OPENCODE_TAG:?can dat OPENCODE_TAG}
     container_name: opencode-server
     restart: unless-stopped
-    mem_limit: 512m
+    # 576m chu khong phai 512m: hai MCP server cuc bo (context7, exa) moi cai la
+    # mot tien trinh node rieng, khoang 60-100 MB moi cai. Tran cu du cho OpenCode
+    # mot minh nhung khong du cho ca ba.
+    #
+    # Tong stack thanh 896/900 MB — con 4 MB dem. Do la RAT SAT: bat them mot MCP
+    # cuc bo nua (brave dang tat) se phai nang tran tong hoac tat bot cai khac.
+    # `oom_score_adj: 800` van giu nguyen y nghia: cham tran thi container nay
+    # chet truoc, bot song sot va bao duoc cho nguoi dung.
+    mem_limit: 576m
     memswap_limit: 1g
     oom_score_adj: 800
     pids_limit: 512

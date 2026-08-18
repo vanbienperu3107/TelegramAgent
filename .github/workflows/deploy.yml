@@ -34,6 +34,9 @@ jobs:
           OPENCODE_PG_PASSWORD: ${{ secrets.OPENCODE_PG_PASSWORD }}
           OPENCODE_SERVER_PASSWORD: ${{ secrets.OPENCODE_SERVER_PASSWORD }}
           CLIPROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           SSH_HOST_VPN4: ${{ secrets.SSH_HOST_VPN4 }}
           SSH_HOST_VPN6: ${{ secrets.SSH_HOST_VPN6 }}
@@ -122,7 +125,7 @@ jobs:
           port: ${{ secrets.SSH_PORT || '22' }}
           script_stop: true
           command_timeout: 20m
-          envs: GHCR_TOKEN,DEPLOY_REF,DEPLOY_PATH,GITHUB_RUN_ID,PG_TUNNEL_KEY_B64,VPN6_HOST_KEY_B64,PG_REMOTE_HOST,GATEWAY_TAG,OPENCODE_TAG,TUNNEL_TAG,OPENCODE_SERVER_PASSWORD,CLIPROXY_API_KEY,OPENCODE_PG_PASSWORD,TELEGRAM_BOT_TOKEN,TELEGRAM_ALLOWED_USER_IDS,TELEGRAM_ADMIN_USER_IDS
+          envs: GHCR_TOKEN,DEPLOY_REF,DEPLOY_PATH,GITHUB_RUN_ID,PG_TUNNEL_KEY_B64,VPN6_HOST_KEY_B64,PG_REMOTE_HOST,GATEWAY_TAG,OPENCODE_TAG,TUNNEL_TAG,OPENCODE_SERVER_PASSWORD,CLIPROXY_API_KEY,EXA_API_KEY,BRAVE_API_KEY,TAVILY_API_KEY,OPENCODE_PG_PASSWORD,TELEGRAM_BOT_TOKEN,TELEGRAM_ALLOWED_USER_IDS,TELEGRAM_ADMIN_USER_IDS
           script: |
             set -x
             exec 9>/var/lock/vpn4-deploy
@@ -171,6 +174,12 @@ jobs:
           TUNNEL_TAG: ${{ vars.TUNNEL_TAG }}
           OPENCODE_SERVER_PASSWORD: ${{ secrets.OPENCODE_SERVER_PASSWORD }}
           CLIPROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}
+          # Ba khoa MCP. `envs:` cua ssh-action chi la BO CHON TEN — gia tri phai
+          # den tu khoi `env:` cua CHINH step nay. Khai o step khac la bien rong o
+          # dau ben kia, khong canh bao gi.
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           OPENCODE_PG_PASSWORD: ${{ secrets.OPENCODE_PG_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ALLOWED_USER_IDS: ${{ secrets.TELEGRAM_ALLOWED_USER_IDS }}

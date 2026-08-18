@@ -17,6 +17,7 @@ export const DANH_SACH_LENH: ReadonlyArray<MoTaLenh> = [
   { lenh: 'model', moTa: 'Chon model' },
   { lenh: 'agent', moTa: 'Chon agent' },
   { lenh: 'dong', moTa: 'Dong phien hien tai' },
+  { lenh: 'dondep', moTa: 'Don cac phien da chet khoi danh sach' },
   { lenh: 'diff', moTa: 'Xem agent da sua nhung file nao' },
   { lenh: 'patch', moTa: 'Xem noi dung thay doi' },
   { lenh: 'abort', moTa: 'Huy task dang chay' },
@@ -60,6 +61,8 @@ export const TEN_KHAC: Readonly<Record<string, string>> = {
   patches: 'patch',
   close: 'dong',
   dongphien: 'dong',
+  don: 'dondep',
+  cleanup: 'dondep',
 };
 
 /**

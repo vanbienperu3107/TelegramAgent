@@ -1,22 +1,61 @@
 {
   "$schema": "https://opencode.ai/config.json",
-
-  "//": "KHUON. sync-models.js chen khoi provider.cliproxy.models roi ghi ra opencode.json.",
-  "//permission": "13 khoa, khong thieu khong thua. Khoa khong dat se chay theo mac dinh cua OpenCode — do la lo hong im lang: mot tool nang co the chay ma khong hien nut Approve nao. verify-opencode-config.js kiem du 13 khoa va kiem bang bash khop chinh xac.",
-  "//lsp": "V1 tat LSP: ngan sach 512 MB cua opencode-server khong cong noi 150-400 MB cua typescript-language-server. permission.lsp la quyen cua TOOL, khoi lsp duoi day moi la cong tac tat SERVER — hai thu khac nhau.",
-
-  "provider": {
-    "cliproxy": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "CLIProxy (vpn4)",
-      "options": {
-        "baseURL": "{env:CLIPROXY_BASE_URL}",
-        "apiKey": "{env:CLIPROXY_API_KEY}"
-      },
-      "models": {}
+  "//": "Khuon. `models` de RONG co y — scripts/sync-models.cjs tham do CLIProxy luc deploy va dien vao opencode.json that. Danh sach viet tay se lech dan khoi thu CLIProxy phuc vu.",
+  "theme": "tokyonight",
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "//mcp": "Lenh dung `npx` chu khong `cmd.exe /c npx` nhu cau hinh may ca nhan: container la Debian. Moi khoa API la {env:...}, gia tri di qua .env.opencode.",
+  "mcp": {
+    "context7": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "enabled": true,
+      "timeout": 15000
+    },
+    "exa": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "exa-mcp-server"
+      ],
+      "enabled": true,
+      "timeout": 15000,
+      "environment": {
+        "EXA_API_KEY": "{env:EXA_API_KEY}"
+      }
+    },
+    "brave": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@brave/brave-search-mcp-server",
+        "--transport",
+        "stdio"
+      ],
+      "enabled": false,
+      "timeout": 15000,
+      "environment": {
+        "BRAVE_API_KEY": "{env:BRAVE_API_KEY}"
+      }
+    },
+    "tavily": {
+      "type": "remote",
+      "url": "https://mcp.tavily.com/mcp/?tavilyApiKey={env:TAVILY_API_KEY}",
+      "enabled": true,
+      "timeout": 15000,
+      "headers": {
+        "DEFAULT_PARAMETERS": "{\"search_depth\":\"basic\",\"max_results\":3,\"include_answer\":false,\"include_raw_content\":false,\"include_images\":false}"
+      }
     }
   },
-
+  "//permission": "webfetch/websearch la \"allow\" theo yeu cau cua nguoi dung (2026-08-18) de cac MCP tim kiem chay tron. Danh doi da biet: agent goi duoc URL tuy y ma khong hoi, tuc no co the mang noi dung workspace ra ngoai. `bash` van \"ask\" va ban do cam van nguyen.",
   "permission": {
     "read": "allow",
     "grep": "allow",
@@ -26,8 +65,12 @@
     "question": "allow",
     "task": "ask",
     "skill": "ask",
-    "webfetch": "ask",
-    "websearch": "ask",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "context7_*": "allow",
+    "exa_*": "allow",
+    "brave_*": "allow",
+    "tavily_*": "allow",
     "external_directory": "ask",
     "doom_loop": "deny",
     "bash": {
@@ -44,8 +87,21 @@
       "git reset --hard*": "deny"
     }
   },
-
+  "//lsp": "permission.lsp la quyen cua TOOL; khoi `lsp` nay moi la cong tac tat SERVER. Hai thu khac nhau.",
   "lsp": {
-    "typescript": { "disabled": true }
+    "typescript": {
+      "disabled": true
+    }
+  },
+  "provider": {
+    "cliproxy": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "CLIProxy (vpn4)",
+      "options": {
+        "baseURL": "{env:CLIPROXY_BASE_URL}",
+        "apiKey": "{env:CLIPROXY_API_KEY}"
+      },
+      "models": {}
+    }
   }
 }

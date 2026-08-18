@@ -121,6 +121,12 @@ def test_env_opencode_chi_co_bien_trong_danh_sach_dong(tmp_path):
         "CLIPROXY_API_KEY",
         "OPENCODE_SERVER_PASSWORD",
         "CLIPROXY_BASE_URL",
+        # Khoa cua cac MCP server. Phai o day chu khong o `.env`: {env:...} trong
+        # opencode.json duoc giai bang moi truong cua CHINH tien trinh
+        # opencode-server, ma container do chi doc file nay.
+        "EXA_API_KEY",
+        "BRAVE_API_KEY",
+        "TAVILY_API_KEY",
     }
 
 
