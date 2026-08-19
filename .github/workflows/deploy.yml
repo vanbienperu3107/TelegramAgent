@@ -144,6 +144,21 @@ jobs:
             test -s .env.opencode
             install -d -m 755 workspace
             test -d workspace/opencode-sandbox || git clone https://github.com/vanbienperu3107/opencode-sandbox.git workspace/opencode-sandbox
+            git config --global --add safe.directory /opt/opencode/workspace/opencode-sandbox
+            # CAP NHAT RIENG AGENTS.md, khong dung toi phan con lai.
+            #
+            # Truoc day cho nay chi `clone` khi thu muc CHUA co, nen sau lan dau
+            # workspace khong bao gio duoc cap nhat nua: AGENTS.md sua tren GitHub
+            # KHONG BAO GIO toi duoc vpn4, va agent chay theo mot ban huong dan da
+            # cu — khong loi, khong canh bao, chi la no khong lam theo nhung gi ta
+            # vua viet.
+            #
+            # KHONG `reset --hard` ca repo: workspace la noi agent lam viec that,
+            # va xoa trang no la xoa ket qua cua nguoi dung. Chi lay dung mot tep
+            # huong dan tu origin.
+            git -C workspace/opencode-sandbox fetch --depth 1 origin main
+            git -C workspace/opencode-sandbox checkout origin/main -- AGENTS.md
+            test -s workspace/opencode-sandbox/AGENTS.md
             chown -R 1000:1000 workspace
             install -m 644 opencode.json opencode.json.bak 2>/dev/null || true
             test -f opencode.json || printf '{}' > opencode.json
