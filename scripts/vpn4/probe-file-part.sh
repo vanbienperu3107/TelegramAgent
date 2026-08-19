@@ -36,7 +36,7 @@ than() {
   # dung hanh vi ho gap, thay vi doan mot cau khac roi ket luan tren mot tinh
   # huong khac.
   local than_json
-  than_json='{"model":{"providerID":"cliproxy","modelID":"claude-sonnet-5"},"agent":"build","parts":[{"type":"text","text":"Cho xin hinh anh mo ta mot vai loai trai cay ngot o Peru."}]}'
+  than_json='{"model":{"providerID":"cliproxy","modelID":"claude-sonnet-5"},"agent":"build","parts":[{"type":"text","text":"Cho toi 4 anh ve mua thu Ha Noi"}]}'
   oc "curl -sS -o /tmp/pr.json -w 'HTTP %{http_code}\n' --max-time 30 $H -X POST -H 'Content-Type: application/json' -d '$than_json' $BASE/session/$ses/prompt_async"
 
   # Doi + tu duyet, giong pattern cua probe-opencode-events.sh.
@@ -90,10 +90,35 @@ for p in cuoi.get('parts', []):
         print(' source  :', json.dumps(p.get('source'))[:300])
     elif t == 'text':
         print('--- TEXT PART (', len(p.get('text','')), 'ky tu ) ---')
-        print(' ', p.get('text','')[:600])
+        print(p.get('text',''))
     else:
         print('--- part loai', t, '---')
 "
+  echo
+  echo "########## CO MARKDOWN ANH TRONG CAU TRA LOI KHONG ##########"
+  oc "curl -sS --max-time 20 $H $BASE/session/$ses/message" | python3 -c "
+import json,sys,re
+d = json.load(sys.stdin)
+van = ''
+tool = []
+for m in d:
+    for p in m.get('parts', []):
+        if p.get('type') == 'text':
+            van += p.get('text','')
+        elif p.get('type') == 'tool':
+            tool.append(p.get('tool') or '?')
+anh = re.findall(r'!\\[([^\\]]*)\\]\\(([^)\\s]+)\\)', van)
+print('so markdown anh tim thay:', len(anh))
+for a, u in anh[:8]:
+    print('  -', a, '->', u[:90])
+print()
+print('cac tool agent da goi:', ', '.join(tool) if tool else 'KHONG GOI TOOL NAO')
+"
+
+  echo
+  echo "########## LOG GATEWAY: co goi sendPhoto khong ##########"
+  docker logs --tail 200 opencode-gateway 2>&1 | grep -iE "anh|photo|tep" | tail -15 || echo "khong co dong log lien quan"
+
   echo
   echo "########## co endpoint tao anh nao trong dac ta khong ##########"
   oc "curl -sS --max-time 20 $H $BASE/doc" | python3 -c "
