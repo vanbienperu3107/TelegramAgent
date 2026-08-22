@@ -381,3 +381,53 @@ def test_python3_co_trong_image_neu_skill_dung_script_python():
         return
     docker = (ROOT / "docker" / "Dockerfile.opencode-server").read_text(encoding="utf-8")
     assert "python3" in docker, "skill co script .py nhung image khong cai python3"
+
+
+# --- kha nang cua model ------------------------------------------------------
+
+@node
+def test_sync_models_giu_khai_bao_nhan_anh(tmp_path):
+    """Model phai duoc khai la NHAN ANH, neu khong agent tu choi anh dau vao.
+
+    Hoi quy that 2026-08-19: khuon de `models: {}` cho sync-models dien, nhung
+    sync-models chi ghi `{name: id}` — mat han `modalities`. OpenCode coi moi model
+    la chi-van-ban, va nguoi dung gui anh thi agent tra loi "phien nay khong ho tro
+    doc anh dau vao" DU anh da toi noi va model that su doc duoc anh.
+
+    Loi nay khong doan duoc tu trieu chung: no o TANG CAU HINH, khong phai tang
+    gui/nhan. Va no im lang hoan toan — khong loi, khong canh bao.
+    """
+    import subprocess as sp
+
+    ket_qua = sp.run(
+        [
+            "node",
+            "-e",
+            "const m=require(process.argv[1]);"
+            "const f=m.khaNangMacDinh||null;"
+            "if(!f){console.log('KHONG_EXPORT');process.exit(0)}"
+            "console.log(JSON.stringify({"
+            "claude:f('claude-opus-5'),gpt:f('gpt-5.4'),"
+            "anh:f('gpt-image-2'),codex:f('codex-auto-review')}))",
+            str(ROOT / "scripts" / "sync-models.cjs"),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    ra = ket_qua.stdout.strip()
+    if ra == "KHONG_EXPORT":
+        # Ham chua export thi kiem bang van ban — van chan duoc hoi quy chinh.
+        noi_dung = (ROOT / "scripts" / "sync-models.cjs").read_text(encoding="utf-8")
+        assert "modalities" in noi_dung, "sync-models khong ghi modalities — anh dau vao se bi tu choi"
+        return
+
+    d = json.loads(ra)
+    assert "image" in (d["claude"].get("modalities") or {}).get("input", []), (
+        "model Claude phai duoc khai la nhan anh"
+    )
+    assert "image" in (d["gpt"].get("modalities") or {}).get("input", []), (
+        "model GPT phai duoc khai la nhan anh"
+    )
+    # Model sinh anh va model review khong phai model hoi-dap.
+    assert not d["anh"], "gpt-image-* khong nen khai nhan anh dau vao"
+    assert not d["codex"], "codex-* khong nen khai nhan anh dau vao"
