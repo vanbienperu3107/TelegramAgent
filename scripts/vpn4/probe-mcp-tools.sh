@@ -108,6 +108,48 @@ echo
 echo "########## 6. Thu muc skill co mount vao khong ##########"
 oc 'ls /opt/skills 2>&1 | head -5'
 
+
+echo
+echo "########## 7. Model co khai la NHAN ANH khong ##########"
+# Nguoi dung gui anh -> agent tra loi "phien nay khong ho tro doc anh dau vao".
+# Anh DA toi noi (agent biet co anh), nen nghi ngo o tang CAU HINH: model co khai
+# modalities.input chua anh hay khong.
+oc "curl -sS --max-time 20 $H $BASE/config" | python3 -c "
+import json,sys
+try:
+    d = json.load(sys.stdin)
+except Exception as e:
+    print('khong doc duoc /config:', e); raise SystemExit
+ms = ((d.get('provider') or {}).get('cliproxy') or {}).get('models') or {}
+print('tong so model:', len(ms))
+co, khong = [], []
+for ten, m in sorted(ms.items()):
+    vao = ((m.get('modalities') or {}).get('input')) or []
+    (co if 'image' in vao else khong).append(ten)
+print('khai NHAN ANH :', len(co))
+for x in co[:6]: print('   -', x)
+print('KHONG khai anh:', len(khong))
+for x in khong[:6]: print('   -', x)
+if not co:
+    print('  >>> KHONG MODEL NAO khai nhan anh — day la ly do agent tu choi anh dau vao')
+"
+
+echo
+echo "--- kha nang do CHINH OpenCode bao (GET /config/providers) ---"
+oc "curl -sS --max-time 20 $H $BASE/config/providers" | python3 -c "
+import json,sys
+d = json.load(sys.stdin)
+for p in d.get('providers', []):
+    if p.get('id') != 'cliproxy':
+        continue
+    ms = p.get('models') or {}
+    print('so model cliproxy:', len(ms))
+    for ten, m in list(sorted(ms.items()))[:5]:
+        kn = m.get('capabilities') or {}
+        vao = kn.get('input') or {}
+        print('  -', ten, '| input.image =', vao.get('image'))
+"
+
 }
 
 than 2>&1 | sed "$BIEU"

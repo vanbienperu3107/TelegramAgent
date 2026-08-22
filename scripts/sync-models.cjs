@@ -118,6 +118,28 @@ function writeReport(failed) {
   fs.writeFileSync(REPORT, lines.join('\n') + '\n', 'utf8');
 }
 
+/**
+ * Kha nang mac dinh cho mot model chua duoc khai trong khuon.
+ *
+ * Vi sao can doan thay vi hoi CLIProxy: `/v1/models` cua CLIProxy chi tra ve `id`,
+ * khong co truong nao noi model co nhan anh hay khong. Khong khai gi ca thi
+ * OpenCode mac dinh coi la CHI VAN BAN va tu choi anh dau vao — do la hong AM
+ * THAM, va nguoi dung chi thay "phien nay khong ho tro doc anh".
+ *
+ * Doan theo HO MODEL, khong theo tung ten: danh sach ten doi moi thang, con
+ * "moi model Claude 3 tro len va moi model GPT-4 tro len deu nhan anh" thi on
+ * dinh. Model sinh anh (`gpt-image-*`) va model chuyen review (`codex-*`) thi
+ * khong nhan anh dau vao — chung khong phai model hoi-dap.
+ */
+function khaNangMacDinh(id) {
+  const s = String(id).toLowerCase();
+  const khongPhaiHoiDap = s.startsWith('gpt-image') || s.startsWith('codex-');
+  if (khongPhaiHoiDap) return {};
+  const nhanAnh = s.startsWith('claude-') || s.startsWith('gpt-');
+  if (!nhanAnh) return {};
+  return { modalities: { input: ['text', 'image'], output: ['text'] } };
+}
+
 async function main() {
   const baseURL = env('CLIPROXY_BASE_URL').replace(/\/+$/, '');
   const apiKey = env('CLIPROXY_API_KEY');
@@ -142,7 +164,20 @@ async function main() {
   // Giu lai model da kiem MA VAN CON trong danh sach cua cliproxy.
   const keep = verified.filter((id) => all.includes(id));
   const models = {};
-  for (const id of [...keep, ...passed].sort()) models[id] = { name: id };
+  // GIU LAI khai bao kha nang cua model, khong chi ghi moi ten.
+  //
+  // Truoc day dong nay ghi `{ name: id }` va lam MAT `modalities`. Hau qua: OpenCode
+  // coi moi model la chi-van-ban, va khi nguoi dung gui anh thi agent tra loi
+  // "phien nay khong ho tro doc anh dau vao" — du anh da toi noi va model that su
+  // doc duoc anh. Loi nay khong the doan tu trieu chung: no chi ra o TANG CAU HINH,
+  // khong phai o tang gui/nhan.
+  //
+  // Khuon la nguon: neu template khai san modalities cho mot model thi giu nguyen.
+  // Con lai dung mac dinh cua `khaNangMacDinh` — xem chu thich cua no.
+  const khuonCu = template.provider.cliproxy.models || {};
+  for (const id of [...keep, ...passed].sort()) {
+    models[id] = khuonCu[id] ? { ...khuonCu[id], name: id } : { name: id, ...khaNangMacDinh(id) };
+  }
 
   if (Object.keys(models).length === 0) {
     writeReport(failed);
@@ -164,4 +199,4 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-module.exports = { mapLimit, readVerified, CONCURRENCY };
+module.exports = { mapLimit, readVerified, khaNangMacDinh, CONCURRENCY };
