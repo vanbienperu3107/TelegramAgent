@@ -6,8 +6,10 @@ Cầu nối để Zed (Agent Panel, giao thức ACP) nói chuyện với `openco
 `opencode-server` không nói ACP, chỉ có REST + SSE (`docs/opencode-api-do-duoc.md`)
 — nên `bridge.mjs` dịch hai chiều giữa hai giao thức đó.
 
-**v1, không đầy đủ đặc tả ACP.** Đủ để chat văn bản qua Agent Panel; tool-call
-hiển thị dạng chunk văn bản đơn giản, chưa dựng UI tool_call/plan riêng.
+**v1, không đầy đủ đặc tả ACP** nhưng đã có: chat văn bản, dropdown đổi model/agent,
+và UI tool_call thật (pending/in_progress/completed, kèm output) — hình dạng do
+trực tiếp từ traffic thật của `opencode acp` (2026-08-27), xem chú thích đầu
+`bridge.mjs`. Còn thiếu: `session/load`, UI `plan`.
 
 ## Yêu cầu
 
@@ -120,6 +122,15 @@ bot Telegram đang dùng.
 lý riêng** — Zed tự render Markdown (kể cả cú phap ảnh) trong content block text.
 Nếu ảnh không hiện, kiểm lại câu trả lời của model có đúng cú pháp `![]()` (có dấu
 `!`) hay chỉ là link thường `[]()`.
+
+## Tool call (đã hỗ trợ)
+
+`message.part.updated` với `part.type === 'tool'` (bash, read, write...) được dịch
+thành `tool_call`/`tool_call_update` đúng schema thật của `opencode acp`
+(pending → in_progress → completed/failed, kèm output trong `content`/`rawOutput`).
+`kind` ACP chỉ chắc chắn đo được cho `bash` (→ `execute`); các tool khác dùng ánh
+xạ suy đoán hợp lý (`read`→read, `write`/`edit`/`patch`→edit...) hoặc `other` nếu
+chưa rõ — chỉ ảnh hưởng icon hiển thị, không ảnh hưởng chức năng.
 
 ## Giới hạn đã biết
 

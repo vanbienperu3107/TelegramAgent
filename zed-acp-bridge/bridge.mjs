@@ -380,12 +380,49 @@ function vanBanTuPrompt(promptBlocks) {
     .join('\n');
 }
 
+/** Kind ACP gan cho tung loai tool cua opencode — do tu tool_call that: bash -> execute. Con lai chua do, dung 'other' cho an toan. */
+const TOOL_ACP_KIND = { bash: 'execute', read: 'read', write: 'edit', edit: 'edit', patch: 'edit', webfetch: 'fetch', grep: 'search', glob: 'search' };
+
+/**
+ * `message.part.updated` voi `part.type === 'tool'` -> `tool_call`/`tool_call_update`.
+ *
+ * Hinh dang `part.state` (pending/running/completed) do truc tiep tu
+ * `docs/opencode-events-sample.jsonl`. Hinh dang ACP tool_call/tool_call_update
+ * do truc tiep tu binary `opencode acp` that (2026-08-27) — xem chu thich dau file.
+ */
+function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
+  const toolCallId = part.callID;
+  const trangThai = part.state?.status;
+  const status = trangThai === 'completed' ? 'completed'
+    : trangThai === 'error' ? 'failed'
+    : trangThai === 'running' ? 'in_progress'
+    : 'pending';
+  const update = {
+    sessionUpdate: daGuiLanDau.has(toolCallId) ? 'tool_call_update' : 'tool_call',
+    toolCallId,
+    status,
+    kind: TOOL_ACP_KIND[part.tool] ?? 'other',
+    title: part.state?.title || part.state?.input?.description || part.state?.input?.command || part.tool,
+    rawInput: part.state?.input,
+  };
+  if (status === 'completed' || status === 'failed') {
+    const output = part.state?.output ?? part.state?.metadata?.output;
+    if (typeof output === 'string' && output.length > 0) {
+      update.content = [{ type: 'content', content: { type: 'text', text: output } }];
+    }
+    if (part.state?.metadata) update.rawOutput = part.state.metadata;
+  }
+  daGuiLanDau.add(toolCallId);
+  sendNotification('session/update', { sessionId: acpSessionId, update });
+}
+
 async function handleSessionPrompt(params) {
   const phien = sessions.get(params.sessionId);
   if (!phien) throw new Error(`session khong ton tai: ${params.sessionId}`);
 
   const text = vanBanTuPrompt(params.prompt);
   const messageID = sinhMessageId();
+  const toolCallDaGui = new Set();
 
   await ocPostJson(
     `/session/${phien.ocSessionId}/prompt_async`,
@@ -416,6 +453,13 @@ async function handleSessionPrompt(params) {
               content: { type: 'text', text: props.delta },
             },
           });
+        }
+        return;
+      }
+      if (ev.type === 'message.part.updated') {
+        const part = ev.properties?.part;
+        if (part?.type === 'tool' && part?.callID) {
+          guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
         }
       }
     },
