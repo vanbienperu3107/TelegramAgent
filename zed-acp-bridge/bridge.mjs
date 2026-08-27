@@ -435,37 +435,107 @@ async function handleSessionPrompt(params) {
     30_000,
   );
 
-  await theoDoiMotLuot({
-    ocSessionId: phien.ocSessionId,
-    messageID,
-    onEvent: async (ev) => {
-      if (ev.type === 'permission.asked') {
-        await xuLyPermissionAsked(params.sessionId, ev);
-        return;
-      }
-      if (ev.type === 'message.part.delta') {
-        const props = ev.properties ?? {};
-        if (props.field === 'text' && typeof props.delta === 'string') {
+  try {
+    await theoDoiMotLuot({
+      ocSessionId: phien.ocSessionId,
+      messageID,
+      onEvent: async (ev) => {
+        if (ev.type === 'permission.asked') {
+          await xuLyPermissionAsked(params.sessionId, ev);
+          return;
+        }
+        if (ev.type === 'message.part.delta') {
+          const props = ev.properties ?? {};
+          if (props.field === 'text' && typeof props.delta === 'string') {
+            sendNotification('session/update', {
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: 'agent_message_chunk',
+                content: { type: 'text', text: props.delta },
+              },
+            });
+          }
+          return;
+        }
+        if (ev.type === 'message.part.updated') {
+          const part = ev.properties?.part;
+          if (part?.type === 'tool' && part?.callID) {
+            guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
+          }
+        }
+      },
+    });
+  } catch (e) {
+    // KHONG replay (docs/opencode-api-do-duoc.md §4.1): mat ket noi SSE giua
+    // luot la mat vinh vien nhung su kien con lai, khong co cach noi lai va
+    // nhan bu. Doi chieu bang GET /session/:id/message roi gui not phan con
+    // thieu — CO THE trung lap voi delta da gui truoc do (chua khu trung),
+    // nhung con hon la cau tra loi bien mat hoac Zed treo cho mai khong xong.
+    process.stderr.write(`bridge.mjs: mat ket noi SSE giua luot (${e.message}), doi chieu bang GET /session/:id/message\n`);
+    try {
+      const list = await ocJson(`/session/${phien.ocSessionId}/message`);
+      const messages = Array.isArray(list) ? list : [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const m = messages[i];
+        if (m?.info?.role !== 'assistant') continue;
+        const daiDien = (m.parts ?? [])
+          .filter((p) => p.type === 'text' && typeof p.text === 'string')
+          .map((p) => p.text)
+          .join('')
+          .trim();
+        if (daiDien.length > 0) {
           sendNotification('session/update', {
             sessionId: params.sessionId,
-            update: {
-              sessionUpdate: 'agent_message_chunk',
-              content: { type: 'text', text: props.delta },
-            },
+            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `\n\n[noi lai sau mat ket noi]\n${daiDien}` } },
           });
         }
-        return;
+        break;
       }
-      if (ev.type === 'message.part.updated') {
-        const part = ev.properties?.part;
-        if (part?.type === 'tool' && part?.callID) {
-          guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
-        }
-      }
-    },
-  });
+    } catch (e2) {
+      process.stderr.write(`bridge.mjs: doi chieu that bai (${e2.message})\n`);
+    }
+  }
 
   return { stopReason: 'end_turn' };
+}
+
+/**
+ * `session/load` — nap lai lich su phien cu. `sessionId` la id ACP do chinh
+ * bridge sinh o `handleSessionNew` (dang `zed-<n>-<ocSessionId>`) nen tach lai
+ * duoc `ocSessionId` MA KHONG CAN nho gi giua cac lan tien trinh bridge khoi
+ * dong lai — Zed spawn bridge moi moi lan mo Agent Panel, `sessions` Map luon
+ * rong luc bat dau.
+ */
+async function handleSessionLoad(params) {
+  const m = /^zed-\d+-(.+)$/.exec(params.sessionId ?? '');
+  if (!m) throw new Error(`sessionId khong dung dinh dang cua bridge nay: ${params.sessionId}`);
+  const ocSessionId = m[1];
+
+  const phien = new VongDoiPhien(ocSessionId, PROVIDER_ID, MODEL_ID, AGENT_NAME);
+  sessions.set(params.sessionId, phien);
+
+  const toolCallDaGui = new Set();
+  const list = await ocJson(`/session/${ocSessionId}/message`);
+  for (const msg of Array.isArray(list) ? list : []) {
+    const role = msg?.info?.role;
+    for (const part of msg?.parts ?? []) {
+      if (part.type === 'text' && typeof part.text === 'string' && part.text.length > 0) {
+        sendNotification('session/update', {
+          sessionId: params.sessionId,
+          update: {
+            // "user_message_chunk" chua kiem chung truc tiep tu traffic that (chi
+            // do duoc "agent_message_chunk" qua tool_call probe) — dung theo quy
+            // uoc dac ta ACP cong khai cho vai tro user.
+            sessionUpdate: role === 'user' ? 'user_message_chunk' : 'agent_message_chunk',
+            content: { type: 'text', text: part.text },
+          },
+        });
+      } else if (part.type === 'tool' && part.callID) {
+        guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
+      }
+    }
+  }
+  return {};
 }
 
 async function handleSessionCancel(params) {
@@ -485,11 +555,14 @@ async function handleRequest(msg) {
           // image: true vi Zed tu render Markdown (ke ca cu phap anh) trong content
           // block text — khong can bridge tu tach thanh block anh rieng. audio/embeddedContext
           // van false: chua lam.
-          agentCapabilities: { loadSession: false, promptCapabilities: { image: true, audio: false } },
+          agentCapabilities: { loadSession: true, promptCapabilities: { image: true, audio: false } },
         });
         return;
       case 'session/new':
         sendResult(id, await handleSessionNew(params));
+        return;
+      case 'session/load':
+        sendResult(id, await handleSessionLoad(params));
         return;
       case 'session/prompt':
         sendResult(id, await handleSessionPrompt(params));
