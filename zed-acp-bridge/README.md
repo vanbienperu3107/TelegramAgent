@@ -132,14 +132,23 @@ thành `tool_call`/`tool_call_update` đúng schema thật của `opencode acp`
 xạ suy đoán hợp lý (`read`→read, `write`/`edit`/`patch`→edit...) hoặc `other` nếu
 chưa rõ — chỉ ảnh hưởng icon hiển thị, không ảnh hưởng chức năng.
 
+## session/load và đối chiếu sau mất kết nối (đã hỗ trợ)
+
+`session/load` nạp lại lịch sử phiên cũ bằng cách tách `ocSessionId` ngay từ
+`sessionId` ACP (dạng `zed-<n>-<ocSessionId>`) rồi phát lại toàn bộ qua
+`GET /session/:id/message` — không cần bridge tự nhớ gì giữa các lần khởi động
+(Zed spawn tiến trình bridge mới mỗi lần mở Agent Panel). Vai trò `user` dùng
+`sessionUpdate: "user_message_chunk"` theo quy ước ACP công khai — **chưa kiểm
+chứng trực tiếp bằng traffic thật** (khác với các phần khác trong file đều đo
+tay), vì phiên đo hôm 2026-08-27 chỉ tạo được ví dụ cho vai trò assistant.
+
+Khi mất kết nối SSE giữa lượt (không có replay — `docs/opencode-api-do-duoc.md`
+§4.1), bridge giờ đối chiếu bằng `GET /session/:id/message` và gửi nốt phần còn
+thiếu thay vì để mất hẳn. Đánh đổi: có thể trùng lặp với phần delta đã gửi
+trước đó (chưa khử trùng) — chấp nhận được vì còn hơn câu trả lời biến mất.
+
 ## Giới hạn đã biết
 
-- Không hỗ trợ `session/load` (nạp lại phiên cũ) — mỗi lần mở Agent Panel là
-  một `POST /session` mới trên opencode-server.
-- Không có replay sự kiện (xem `docs/opencode-api-do-duoc.md` §4.1): nếu mất
-  kết nối SSE giữa chừng một lượt, bridge coi lượt đó kết thúc thay vì treo —
-  nhưng có thể mất phần đuôi câu trả lời. Chưa làm bước đối chiếu
-  `GET /session/:id/message` sau khi mất kết nối như bot Telegram đã làm.
 - `mcpServers` Zed gửi trong `session/new` bị bỏ qua — MCP của opencode-server
   cấu hình riêng qua `opencode.json` trên vpn4, không nhận cấu hình từ client.
 - Chưa có test tự động cho file này (khác với phần còn lại của repo, vốn có
