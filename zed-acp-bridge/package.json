@@ -1,0 +1,11 @@
+{
+  "name": "zed-acp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cau ACP (Zed) <-> opencode-server remote qua REST/SSE",
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "undici": "^7.2.0"
+  }
+}
