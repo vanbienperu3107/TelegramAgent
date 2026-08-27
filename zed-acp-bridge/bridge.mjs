@@ -42,6 +42,16 @@ if (!OPENCODE_URL || !OPENCODE_SERVER_PASSWORD) {
   process.exit(1);
 }
 
+// Ra Internet phai qua proxy cuc bo (mang chi cho CONNECT :443, giong itop/gost
+// da dung cho cac may khac trong ha tang nay). fetch/SSE built-in cua Node
+// KHONG tu doc HTTPS_PROXY — phai gan dispatcher cua undici thu cong.
+const PROXY_URL = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+if (PROXY_URL) {
+  const { ProxyAgent, setGlobalDispatcher } = await import('undici');
+  setGlobalDispatcher(new ProxyAgent(PROXY_URL));
+  process.stderr.write(`bridge.mjs: di qua proxy ${PROXY_URL}\n`);
+}
+
 const BASIC_AUTH = `Basic ${Buffer.from(`opencode:${OPENCODE_SERVER_PASSWORD}`, 'utf8').toString('base64')}`;
 
 function headers(extra) {

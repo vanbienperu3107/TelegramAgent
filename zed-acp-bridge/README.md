@@ -13,8 +13,16 @@ hiển thị dạng chunk văn bản đơn giản, chưa dựng UI tool_call/pla
 
 - Node.js >= 18 (dùng `fetch`/`AbortSignal.timeout` built-in) trên máy chạy Zed.
 - Domain `opencode.hangocthanh.io.vn` đã trỏ DNS + PR route đã merge & deploy
-  (xem `deployHeadscale/edge-vpn4/README.md`).
+  (xem `deployHeadscale/edge-vpn4/README.md`). Endpoint này chỉ nghe đúng
+  **cổng 443** phía ngoài — nginx trên vpn4 định tuyến theo SNI, không có cổng
+  phụ nào lộ ra Internet (khác với đường CLIProxyAPI cũ 28417).
 - Mật khẩu `OPENCODE_SERVER_PASSWORD` của `opencode-server` trên vpn4.
+- Nếu máy chạy Zed **chỉ ra Internet được qua proxy** (mạng công ty/ISP chặn
+  outbound trực tiếp, chỉ cho `CONNECT :443` — giống itop/gost đã dùng cho các
+  máy khác trong hạ tầng này): chạy `npm install` trong thư mục này một lần để
+  lấy `undici`, rồi đặt `HTTPS_PROXY` (xem mục "Qua proxy" bên dưới). Node's
+  `fetch` built-in **không tự đọc** biến `HTTPS_PROXY` — thiếu bước cài này thì
+  bridge vẫn cố kết nối thẳng và sẽ timeout.
 
 ## Cấu hình Zed
 
@@ -42,6 +50,35 @@ Thêm vào `settings.json` của Zed (Cmd/Ctrl+Shift+P → "Open Settings"):
 **Không commit mật khẩu vào settings.json nếu file đó đồng bộ/chia sẻ.** Có thể
 thay bằng biến môi trường hệ điều hành và tham chiếu `"env": {}` rỗng — Zed kế
 thừa env của tiến trình cha nếu không override.
+
+## Qua proxy (mạng chỉ cho ra ngoài qua CONNECT :443)
+
+```bash
+cd zed-acp-bridge
+npm install
+```
+
+Thêm `HTTPS_PROXY` vào khối `env` trong `settings.json` của Zed (cùng chỗ với
+`OPENCODE_URL`):
+
+```json
+"env": {
+  "OPENCODE_URL": "https://opencode.hangocthanh.io.vn",
+  "OPENCODE_SERVER_PASSWORD": "<mat_khau_that>",
+  "HTTPS_PROXY": "http://127.0.0.1:<port_proxy_cuc_bo>"
+}
+```
+
+Bridge tự dò `HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy` (không phân
+biệt hoa thường theo thói quen POSIX) lúc khởi động, gắn `ProxyAgent` của
+`undici` làm dispatcher toàn cục cho mọi `fetch` (kể cả luồng SSE `/event`).
+Không đặt biến này thì bridge kết nối thẳng như bình thường — không ảnh hưởng
+máy không cần proxy.
+
+Kiểm nhanh proxy có hoạt động không, xem dòng log ở stderr khi khởi động:
+`bridge.mjs: di qua proxy http://...`. Nếu không thấy dòng này mà máy bạn cần
+proxy, kiểm lại tên biến trong `env` của Zed (Zed không tự merge biến hệ điều
+hành cho phần `env` đã khai — chỉ merge khi bỏ trống hẳn khối `env`).
 
 ## Chạy thử độc lập (không qua Zed) để debug
 
