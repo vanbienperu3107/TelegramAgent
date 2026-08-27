@@ -107,6 +107,20 @@ trợ method này, hoặc lỗi mạng — bridge dùng `ACP_AUTO_APPROVE_FALLBA
 đang giữ DERP relay của cả tailnet). Đổi sang `"once"` chỉ khi bạn hiểu rõ rủi
 ro.
 
+## Model/agent dropdown (đã hỗ trợ)
+
+`session/new` trả kèm `configOptions` (model + agent), và `session/set_config_option`
+cho phép đổi ngay trong dropdown UI của Zed — đúng cơ chế mà `opencode acp` bản
+chính hãng dùng (đo trực tiếp bằng cách gọi tay vào binary thật ngày 2026-08-27,
+đây là phần mở rộng riêng của OpenCode, không nằm trong đặc tả ACP công khai).
+Danh sách model lấy từ `GET /config/providers`, agent từ `GET /agent` — cùng 2 API
+bot Telegram đang dùng.
+
+Ảnh dạng Markdown `![alt](url)` trong câu trả lời của model **không cần bridge xử
+lý riêng** — Zed tự render Markdown (kể cả cú phap ảnh) trong content block text.
+Nếu ảnh không hiện, kiểm lại câu trả lời của model có đúng cú pháp `![]()` (có dấu
+`!`) hay chỉ là link thường `[]()`.
+
 ## Giới hạn đã biết
 
 - Không hỗ trợ `session/load` (nạp lại phiên cũ) — mỗi lần mở Agent Panel là
