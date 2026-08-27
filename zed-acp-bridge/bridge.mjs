@@ -19,6 +19,16 @@
  * Chua lam: tool_call chi tiet (dang gop vao agent_message_chunk dang van
  * ban danh dau [tool: ...]), session/load, mcpServers tu Zed truyen sang
  * opencode (opencode tu quan ly MCP rieng qua opencode.json cua no).
+ *
+ * `configOptions` (dropdown model/mode trong UI Zed) VA `session/set_config_option`
+ * KHONG nam trong dac ta ACP cong khai — day la phan mo rong rieng cua binary
+ * `opencode acp` that. Hinh dang o day duoc do truc tiep bang cach goi tay vao
+ * `opencode acp` cuc bo (2026-08-27), khong doan:
+ *   session/new tra them {configOptions: [{id,name,category,type,currentValue,options}]}
+ *   session/set_config_option nhan {sessionId, configId, value} -> {} (200 rong)
+ * ANH markdown `![]()` trong text: KHONG can xu ly rieng — Zed tu render Markdown
+ * trong content block dang text, kem ca cu phap anh. Lan truoc thieu anh la do
+ * MODEL tu sinh cu phap link thuong (thieu dau `!`), khong phai gioi han ky thuat.
  */
 
 import { Buffer } from 'node:buffer';
@@ -182,10 +192,41 @@ const sessions = new Map();
 let sessionCounter = 0;
 
 class VongDoiPhien {
-  constructor(ocSessionId) {
+  constructor(ocSessionId, providerID, modelID, agentName) {
     this.ocSessionId = ocSessionId;
+    this.providerID = providerID;
+    this.modelID = modelID;
+    this.agentName = agentName;
     this.dungLuong = false;
   }
+}
+
+/**
+ * Danh sach model, phang hoa tu `GET /config/providers` — dung dinh dang
+ * "providerID/modelID" lam `value`, giong het cach `opencode acp` that dang lam
+ * (do duoc: "cliproxy/claude-opus-5", "opencode/big-pickle"...).
+ */
+async function dsModelConfigOptions() {
+  const d = await ocJson('/config/providers');
+  const options = [];
+  for (const p of d.providers ?? []) {
+    for (const [khoa, m] of Object.entries(p.models ?? {})) {
+      const modelID = m.id ?? khoa;
+      options.push({ value: `${p.id}/${modelID}`, name: `${p.name ?? p.id}/${m.name ?? modelID}` });
+    }
+  }
+  return options;
+}
+
+/** Danh sach agent (mode), tu `GET /agent`. */
+async function dsAgentConfigOptions() {
+  const d = await ocJson('/agent');
+  const list = Array.isArray(d) ? d : [];
+  return list.map((a) => ({
+    value: a.name,
+    name: a.name,
+    description: a.description,
+  }));
 }
 
 /**
@@ -272,8 +313,64 @@ async function handleSessionNew(params) {
   });
   sessionCounter += 1;
   const acpSessionId = `zed-${sessionCounter}-${ocSession.id}`;
-  sessions.set(acpSessionId, new VongDoiPhien(ocSession.id));
-  return { sessionId: acpSessionId };
+  const phien = new VongDoiPhien(ocSession.id, PROVIDER_ID, MODEL_ID, AGENT_NAME);
+  sessions.set(acpSessionId, phien);
+
+  // configOptions la phan mo rong rieng cua opencode acp, khong nam trong dac ta
+  // ACP cong khai — hinh dang do truc tiep tu binary that (xem chu thich dau file).
+  // Loi goi API o day KHONG duoc lam hong ca session/new: thieu dropdown van con
+  // hon la khong tao duoc phien.
+  const configOptions = [];
+  try {
+    const modelOptions = await dsModelConfigOptions();
+    configOptions.push({
+      id: 'model',
+      name: 'Model',
+      category: 'model',
+      type: 'select',
+      currentValue: `${phien.providerID}/${phien.modelID}`,
+      options: modelOptions,
+    });
+  } catch (e) {
+    process.stderr.write(`bridge.mjs: khong lay duoc danh sach model (${e.message}), bo qua dropdown\n`);
+  }
+  try {
+    const agentOptions = await dsAgentConfigOptions();
+    if (agentOptions.length > 0) {
+      configOptions.push({
+        id: 'mode',
+        name: 'Agent',
+        category: 'mode',
+        type: 'select',
+        currentValue: phien.agentName,
+        options: agentOptions,
+      });
+    }
+  } catch (e) {
+    process.stderr.write(`bridge.mjs: khong lay duoc danh sach agent (${e.message}), bo qua dropdown\n`);
+  }
+
+  return { sessionId: acpSessionId, ...(configOptions.length > 0 ? { configOptions } : {}) };
+}
+
+/**
+ * `session/set_config_option` — method mo rong (khong trong dac ta ACP cong
+ * khai), do duoc tu `opencode acp` that: {sessionId, configId, value} -> {}.
+ */
+async function handleSetConfigOption(params) {
+  const phien = sessions.get(params.sessionId);
+  if (!phien) throw new Error(`session khong ton tai: ${params.sessionId}`);
+  if (params.configId === 'model') {
+    const slash = String(params.value).indexOf('/');
+    if (slash < 0) throw new Error(`gia tri model khong dung dang providerID/modelID: ${params.value}`);
+    phien.providerID = params.value.slice(0, slash);
+    phien.modelID = params.value.slice(slash + 1);
+  } else if (params.configId === 'mode') {
+    phien.agentName = params.value;
+  } else {
+    throw new Error(`configId khong duoc ho tro: ${params.configId}`);
+  }
+  return {};
 }
 
 function vanBanTuPrompt(promptBlocks) {
@@ -294,8 +391,8 @@ async function handleSessionPrompt(params) {
     `/session/${phien.ocSessionId}/prompt_async`,
     {
       messageID,
-      model: { providerID: PROVIDER_ID, modelID: MODEL_ID },
-      agent: AGENT_NAME,
+      model: { providerID: phien.providerID, modelID: phien.modelID },
+      agent: phien.agentName,
       parts: [{ type: 'text', text }],
     },
     30_000,
@@ -341,7 +438,10 @@ async function handleRequest(msg) {
       case 'initialize':
         sendResult(id, {
           protocolVersion: params?.protocolVersion ?? 1,
-          agentCapabilities: { loadSession: false, promptCapabilities: { image: false, audio: false } },
+          // image: true vi Zed tu render Markdown (ke ca cu phap anh) trong content
+          // block text — khong can bridge tu tach thanh block anh rieng. audio/embeddedContext
+          // van false: chua lam.
+          agentCapabilities: { loadSession: false, promptCapabilities: { image: true, audio: false } },
         });
         return;
       case 'session/new':
@@ -352,6 +452,9 @@ async function handleRequest(msg) {
         return;
       case 'session/cancel':
         sendResult(id, await handleSessionCancel(params));
+        return;
+      case 'session/set_config_option':
+        sendResult(id, await handleSetConfigOption(params));
         return;
       default:
         sendError(id, -32601, `method khong duoc ho tro: ${method}`);
