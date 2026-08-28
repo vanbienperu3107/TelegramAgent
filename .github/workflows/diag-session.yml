@@ -34,6 +34,7 @@ jobs:
               text: (.text // null | if . != null and (length > 200) then (.[0:200] + "...(cat bot)") else . end),
               tool,
               state: .state.status,
+              input: (.state.input | tostring | if length > 300 then (.[0:300] + "...(cat bot)") else . end),
               mime,
               filename
             }]
