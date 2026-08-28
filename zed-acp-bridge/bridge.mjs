@@ -501,6 +501,28 @@ function tenTepTuUri(uri) {
 }
 
 /**
+ * Doan MIME tu duoi tep khi Zed khong cho san `mimeType`.
+ *
+ * BAT BUOC khong fallback ve `application/octet-stream` — do duoc that
+ * (2026-08-28, xem doc chieu qua diag-session.yml): opencode-server tu choi
+ * thang voi loi "'file part media type application/octet-stream' functionality
+ * not supported.", assistant loi ngay lap tuc (~400ms), khong sinh duoc chu
+ * nao. Mac dinh an toan hon la `text/plain` — dinh kem trong ngu canh coding
+ * (script, config, log...) phan lon la van ban, chu khong phai nhi phan.
+ */
+function doanMime(ten) {
+  const duoi = (ten ?? '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  const bang = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+    pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', json: 'application/json', csv: 'text/csv',
+    ps1: 'text/plain', sh: 'text/plain', bash: 'text/plain', js: 'text/plain', mjs: 'text/plain', ts: 'text/plain',
+    py: 'text/plain', yaml: 'text/plain', yml: 'text/plain', toml: 'text/plain', ini: 'text/plain', cfg: 'text/plain',
+    xml: 'text/plain', html: 'text/plain', css: 'text/plain', sql: 'text/plain', log: 'text/plain', env: 'text/plain',
+  };
+  return (duoi && bang[duoi]) || 'text/plain';
+}
+
+/**
  * `resource` (embedded, co san noi dung) -> `FilePartInput` cua opencode-server.
  * Hinh dang chuan ACP: `{type:'resource', resource:{uri, mimeType, text|blob}}`
  * (do tu https://agentclientprotocol.com/protocol/content, khong doan).
@@ -508,7 +530,7 @@ function tenTepTuUri(uri) {
 function resourceThanhFilePart(block) {
   const r = block?.resource;
   if (!r) return null;
-  const mime = r.mimeType || 'application/octet-stream';
+  const mime = r.mimeType || doanMime(tenTepTuUri(r.uri));
   if (typeof r.blob === 'string') {
     return { type: 'file', mime, url: `data:${mime};base64,${r.blob}`, filename: tenTepTuUri(r.uri) };
   }
@@ -555,7 +577,7 @@ async function resourceLinkThanhFilePart(block) {
       return { loiKichThuoc: `Tệp "${ten}" nặng ${mb.toFixed(1)} MB, vượt giới hạn ${TRAN_TEP_DINH_KEM_MB} MB của bridge — KHÔNG gửi lên model.` };
     }
     const byte = await fs.readFile(duongDan);
-    const mime = block.mimeType || 'application/octet-stream';
+    const mime = block.mimeType || doanMime(block.name || tenTepTuUri(block.uri));
     return {
       type: 'file',
       mime,

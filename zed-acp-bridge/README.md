@@ -208,6 +208,25 @@ mà **không log gì cả** (lỗi chỉ được ghi ở bước gọi mạng, 
 file), đúng dạng lỗi "Zed im lặng hoàn toàn" báo cáo thật cùng ngày. Vượt trần,
 bridge chèn thẳng một dòng cảnh báo vào text của lượt chat thay vì đọc/gửi tệp.
 
+**MIME type không được `application/octet-stream` (2026-08-28) — nguyên nhân
+thật của "gửi file xong Zed im lặng hoàn toàn":** đối chiếu trực tiếp qua
+`GET /session/:id/message` (workflow `diag-session.yml`) thấy message assistant
+lỗi **ngay lập tức** (~400ms, không sinh chữ nào):
+
+```text
+"error":{"name":"UnknownError","data":{"message":"'file part media type
+application/octet-stream' functionality not supported."}}
+```
+
+Zed không luôn gửi kèm `mimeType` cho `resource_link`, bridge trước đó fallback
+về `application/octet-stream` — server từ chối thẳng kiểu MIME chung chung này.
+Sửa: hàm `doanMime()` đoán theo đuôi tệp (giống `dinh-kem.ts` của bot Telegram,
+mở rộng thêm `.ps1/.sh/.js/.py/.yaml`...), mặc định `text/plain` nếu không đoán
+được — hợp lý hơn `octet-stream` vì đính kèm trong ngữ cảnh coding phần lớn là
+văn bản. **Bài học quan trọng nhất:** `session/prompt` trả `OK` không có nghĩa
+là model trả lời thành công — phải đối chiếu `GET /session/:id/message` mới
+biết chắc, vì lỗi phía model không tự động thành lỗi ACP.
+
 ## Giới hạn đã biết
 
 - `mcpServers` Zed gửi trong `session/new` bị bỏ qua — MCP của opencode-server
