@@ -35,7 +35,9 @@
  */
 
 import { Buffer } from 'node:buffer';
+import fs from 'node:fs/promises';
 import readline from 'node:readline';
+import { fileURLToPath } from 'node:url';
 
 const OPENCODE_URL = (process.env.OPENCODE_URL ?? '').replace(/\/+$/, '');
 const OPENCODE_SERVER_PASSWORD = process.env.OPENCODE_SERVER_PASSWORD ?? '';
@@ -467,11 +469,98 @@ async function handleSetConfigOption(params) {
   return { ...(configOptions.length > 0 ? { configOptions } : {}) };
 }
 
-function vanBanTuPrompt(promptBlocks) {
-  return (promptBlocks ?? [])
+function tenTepTuUri(uri) {
+  if (typeof uri !== 'string' || uri.length === 0) return undefined;
+  try {
+    return decodeURIComponent(uri.split(/[/\\]/).pop() ?? '');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `resource` (embedded, co san noi dung) -> `FilePartInput` cua opencode-server.
+ * Hinh dang chuan ACP: `{type:'resource', resource:{uri, mimeType, text|blob}}`
+ * (do tu https://agentclientprotocol.com/protocol/content, khong doan).
+ */
+function resourceThanhFilePart(block) {
+  const r = block?.resource;
+  if (!r) return null;
+  const mime = r.mimeType || 'application/octet-stream';
+  if (typeof r.blob === 'string') {
+    return { type: 'file', mime, url: `data:${mime};base64,${r.blob}`, filename: tenTepTuUri(r.uri) };
+  }
+  if (typeof r.text === 'string') {
+    const b64 = Buffer.from(r.text, 'utf8').toString('base64');
+    return { type: 'file', mime, url: `data:${mime};base64,${b64}`, filename: tenTepTuUri(r.uri) };
+  }
+  return null;
+}
+
+/**
+ * `resource_link` (chi co duong dan, KHONG co noi dung san) -> phai tu doc tep.
+ * Doc duoc vi bridge chay CUNG MAY voi Zed (tien trinh con do Zed spawn) — `uri`
+ * dang `file://` tro toi tep tren chinh may do.
+ */
+async function resourceLinkThanhFilePart(block) {
+  if (typeof block?.uri !== 'string') return null;
+  let duongDan = block.uri;
+  if (duongDan.startsWith('file://')) {
+    try {
+      duongDan = fileURLToPath(duongDan);
+    } catch {
+      // giu nguyen chuoi goc, thu doc thang — mot so client gui duong dan tran
+    }
+  }
+  try {
+    const byte = await fs.readFile(duongDan);
+    const mime = block.mimeType || 'application/octet-stream';
+    return {
+      type: 'file',
+      mime,
+      url: `data:${mime};base64,${byte.toString('base64')}`,
+      filename: block.name || tenTepTuUri(block.uri),
+    };
+  } catch (e) {
+    process.stderr.write(`bridge.mjs: khong doc duoc tep dinh kem "${duongDan}": ${e.message}\n`);
+    return null;
+  }
+}
+
+/**
+ * Dich toan bo `prompt` (mang content block ACP) sang `parts` cua opencode-server.
+ * Van ban gop thanh MOT part `text` dat DAU TIEN (opencode-client.ts cua bot
+ * Telegram da ghi ro thu tu nay co chu dich: cau hoi phai den truoc tep de model
+ * biet phai lam gi voi no). File dinh kem (`resource`/`resource_link`/`image`)
+ * theo sau — TRUOC DAY bi vut het, chi lay `text`, dung nguyen nhan bao cao
+ * 2026-08-28 (dinh kem @mention trong Zed khong toi duoc opencode-server).
+ */
+async function partsTuPrompt(promptBlocks) {
+  const blocks = promptBlocks ?? [];
+  const text = blocks
     .filter((b) => b?.type === 'text' && typeof b.text === 'string')
     .map((b) => b.text)
     .join('\n');
+  const parts = [{ type: 'text', text }];
+
+  for (const b of blocks) {
+    if (b?.type === 'text') continue;
+    let filePart = null;
+    if (b?.type === 'resource') {
+      filePart = resourceThanhFilePart(b);
+    } else if (b?.type === 'resource_link') {
+      filePart = await resourceLinkThanhFilePart(b);
+    } else if (b?.type === 'image' && typeof b.data === 'string') {
+      const mime = b.mimeType || 'image/png';
+      filePart = { type: 'file', mime, url: `data:${mime};base64,${b.data}` };
+    }
+    if (filePart) {
+      parts.push(filePart);
+    } else {
+      process.stderr.write(`bridge.mjs: bo qua content block khong dich duoc (type=${b?.type})\n`);
+    }
+  }
+  return parts;
 }
 
 /** Kind ACP gan cho tung loai tool cua opencode — do tu tool_call that: bash -> execute. Con lai chua do, dung 'other' cho an toan. */
@@ -514,7 +603,7 @@ async function handleSessionPrompt(params) {
   const phien = sessions.get(params.sessionId);
   if (!phien) throw new Error(`session khong ton tai: ${params.sessionId}`);
 
-  const text = vanBanTuPrompt(params.prompt);
+  const parts = await partsTuPrompt(params.prompt);
   const messageID = sinhMessageId();
   const toolCallDaGui = new Set();
 
@@ -559,7 +648,7 @@ async function handleSessionPrompt(params) {
         messageID,
         model: { providerID: phien.providerID, modelID: phien.modelID },
         agent: phien.agentName,
-        parts: [{ type: 'text', text }],
+        parts,
       },
       30_000,
     );

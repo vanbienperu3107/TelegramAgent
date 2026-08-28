@@ -162,6 +162,22 @@ vòng đời phiên, dùng chung cho mọi lượt `session/prompt` — theo đ�
 `LuongSuKien` (`src/services/event-stream.ts`) bot Telegram đã dùng ổn định.
 Giảm số lần mở/huỷ SSE từ "mỗi lượt chat" xuống "mỗi lần mở Agent Panel".
 
+## File đính kèm / @mention (đã hỗ trợ, 2026-08-28)
+
+Trước đây `session/prompt` chỉ lấy content block `type: "text"`, mọi thứ khác
+(file đính kèm qua `@mention` trong Zed) bị vứt bỏ hoàn toàn — model luôn báo
+"không thấy file đính kèm nào". Giờ dịch cả 3 loại content block chuẩn ACP
+(`agentclientprotocol.com/protocol/content`) sang `FilePartInput` của
+opencode-server (giống hệt `dinh-kem.ts` của bot Telegram):
+
+- `resource` (nội dung đã nhúng sẵn, `text` hoặc `blob` base64)
+- `resource_link` (chỉ có đường dẫn `file://`) — bridge tự đọc file, vì nó chạy
+  **cùng máy** với Zed (tiến trình con do Zed spawn)
+- `image` (base64 `data`)
+
+Nếu một loại content block không dịch được, bridge bỏ qua và ghi log ra stderr
+(`bo qua content block khong dich duoc`) thay vì làm hỏng cả lượt chat.
+
 ## Giới hạn đã biết
 
 - `mcpServers` Zed gửi trong `session/new` bị bỏ qua — MCP của opencode-server
