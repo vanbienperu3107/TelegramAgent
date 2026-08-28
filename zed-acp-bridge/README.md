@@ -188,6 +188,13 @@ opencode-server (giống hệt `dinh-kem.ts` của bot Telegram):
 Nếu một loại content block không dịch được, bridge bỏ qua và ghi log ra stderr
 (`bo qua content block khong dich duoc`) thay vì làm hỏng cả lượt chat.
 
+**Giới hạn kích thước (2026-08-28):** `resource_link` có trần cứng **20 MB**
+(đồng bộ với `TRAN_TAI_VE_MB` của bot Telegram). Trước đó không có trần — đọc +
+mã hoá base64 + gửi một tệp vài chục MB có thể treo rất lâu qua đường proxy chậm
+mà **không log gì cả** (lỗi chỉ được ghi ở bước gọi mạng, không phải ở bước đọc
+file), đúng dạng lỗi "Zed im lặng hoàn toàn" báo cáo thật cùng ngày. Vượt trần,
+bridge chèn thẳng một dòng cảnh báo vào text của lượt chat thay vì đọc/gửi tệp.
+
 ## Giới hạn đã biết
 
 - `mcpServers` Zed gửi trong `session/new` bị bỏ qua — MCP của opencode-server
