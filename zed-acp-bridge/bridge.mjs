@@ -35,6 +35,7 @@
  */
 
 import { Buffer } from 'node:buffer';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
@@ -68,6 +69,28 @@ function ghiLog(msg) {
   const dong = `[${new Date().toISOString()}] ${msg}`;
   process.stderr.write(dong);
   logStream?.write(dong);
+}
+
+/**
+ * Doi voi ACP_AUTO_OPEN_HTML=1 — bat de tu mo file .html/.htm bang trinh duyet
+ * mac dinh ngay sau khi tai ve dia cuc bo. Zed KHONG co preview HTML (da xac
+ * nhan bang cach doc issue that cua team Zed, 2026-08-28: #21208 "Webview via
+ * Extensions" con mo, #59598 moi la de xuat chua co API) — day la cach DUY
+ * NHAT hien co de xem HTML render, khong phai giai phap tam.
+ */
+const TU_MO_HTML = process.env.ACP_AUTO_OPEN_HTML === '1';
+
+function moBangTrinhDuyetMacDinh(duongDan) {
+  const lenh = process.platform === 'win32' ? 'start'
+    : process.platform === 'darwin' ? 'open'
+    : 'xdg-open';
+  const doiSo = process.platform === 'win32' ? ['/c', 'start', '""', duongDan] : [duongDan];
+  const chuongTrinh = process.platform === 'win32' ? 'cmd' : lenh;
+  try {
+    spawn(chuongTrinh, doiSo, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  } catch (e) {
+    ghiLog(`bridge.mjs: khong mo duoc trinh duyet cho "${duongDan}": ${e.message}\n`);
+  }
 }
 
 const OPENCODE_URL = (process.env.OPENCODE_URL ?? '').replace(/\/+$/, '');
@@ -778,6 +801,9 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
             duongDanLocal = path.join(DOWNLOAD_DIR, `${timestamp}-${tenTep}`);
             const noiDung = fc.encoding === 'base64' ? Buffer.from(fc.content, 'base64') : fc.content;
             await fs.writeFile(duongDanLocal, noiDung);
+            if (TU_MO_HTML && /\.html?$/i.test(tenTep)) {
+              moBangTrinhDuyetMacDinh(duongDanLocal);
+            }
           } catch (e2) {
             ghiLog(`bridge.mjs: khong ghi duoc tep tai ve cuc bo cho "${duongDan}": ${e2.message}\n`);
           }
