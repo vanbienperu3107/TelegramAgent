@@ -520,9 +520,21 @@ function resourceThanhFilePart(block) {
 }
 
 /**
+ * Gioi han cung, DONG BO voi `TRAN_TAI_VE_MB` cua bot Telegram (`dinh-kem.ts`).
+ * Khong co gioi han nay, doc+ma hoa base64+gui mot tep vai chuc MB co the treo
+ * rat lau (proxy cham/chan upload lon) MA KHONG log gi ca — vi loi chi duoc ghi
+ * o buoc SAU (fetch that bai), khong phai o buoc doc/ma hoa file. Bao cao that
+ * 2026-08-28: dinh kem 1 tep lon, Zed im lang hoan toan, bridge.log rong.
+ */
+const TRAN_TEP_DINH_KEM_MB = 20;
+
+/**
  * `resource_link` (chi co duong dan, KHONG co noi dung san) -> phai tu doc tep.
  * Doc duoc vi bridge chay CUNG MAY voi Zed (tien trinh con do Zed spawn) — `uri`
  * dang `file://` tro toi tep tren chinh may do.
+ *
+ * Tra ve `{loiKichThuoc}` (khong phai file part) khi vuot gioi han, de ben goi
+ * bao lai cho nguoi dung THAY VI im lang bo qua hoac treo.
  */
 async function resourceLinkThanhFilePart(block) {
   if (typeof block?.uri !== 'string') return null;
@@ -535,6 +547,13 @@ async function resourceLinkThanhFilePart(block) {
     }
   }
   try {
+    const tt = await fs.stat(duongDan);
+    const mb = tt.size / (1024 * 1024);
+    if (mb > TRAN_TEP_DINH_KEM_MB) {
+      const ten = block.name || tenTepTuUri(block.uri) || duongDan;
+      ghiLog(`bridge.mjs: tep dinh kem "${duongDan}" ${mb.toFixed(1)}MB vuot tran ${TRAN_TEP_DINH_KEM_MB}MB, bo qua\n`);
+      return { loiKichThuoc: `Tệp "${ten}" nặng ${mb.toFixed(1)} MB, vượt giới hạn ${TRAN_TEP_DINH_KEM_MB} MB của bridge — KHÔNG gửi lên model.` };
+    }
     const byte = await fs.readFile(duongDan);
     const mime = block.mimeType || 'application/octet-stream';
     return {
@@ -576,7 +595,11 @@ async function partsTuPrompt(promptBlocks) {
       const mime = b.mimeType || 'image/png';
       filePart = { type: 'file', mime, url: `data:${mime};base64,${b.data}` };
     }
-    if (filePart) {
+    if (filePart?.loiKichThuoc) {
+      // Bao NGAY TRONG VAN BAN thay vi im lang bo qua — model (va nguoi dung
+      // doc lai qua agent_message_chunk sau nay) can biet vi sao khong thay tep.
+      parts[0].text += `\n\n[bridge: ${filePart.loiKichThuoc}]`;
+    } else if (filePart) {
       parts.push(filePart);
     } else {
       ghiLog(`bridge.mjs: bo qua content block khong dich duoc (type=${b?.type})\n`);
