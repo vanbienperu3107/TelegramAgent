@@ -193,6 +193,18 @@ thành `tool_call`/`tool_call_update` đúng schema thật của `opencode acp`
 xạ suy đoán hợp lý (`read`→read, `write`/`edit`/`patch`→edit...) hoặc `other` nếu
 chưa rõ — chỉ ảnh hưởng icon hiển thị, không ảnh hưởng chức năng.
 
+**Lấy lại nội dung file sau khi tạo/sửa (2026-08-28):** workspace của
+opencode-server nằm **trên vpn4**, không phải máy chạy Zed — file model tạo ra
+(`.html`, `.md`, code...) sẽ không tự xuất hiện trong file explorer của Zed
+(giống hệt lý do bot Telegram cần riêng `tep-ket-qua.ts` để gửi file về). Khi
+tool `write`/`edit`/`patch` hoàn tất, bridge tự gọi `GET /file/content?path=...`
+(đo từ `opencode-openapi.json`) đọc lại nội dung, gắn thẳng vào `content` của
+`tool_call_update` — bạn xem/copy được ngay trong khối tool_call ở Zed, không
+cần SSH vào vpn4. **Chưa kiểm chứng bằng traffic thật** tên trường chứa đường
+dẫn file trên `state.input` của tool `write`/`edit` (mẫu sự kiện đã bắt chỉ có
+`bash`) — bridge thử cả `filePath` và `path`, không thấy thì bỏ qua phần đọc
+lại (không làm hỏng tool_call chính).
+
 ## session/load và đối chiếu sau mất kết nối (đã hỗ trợ)
 
 `session/load` nạp lại lịch sử phiên cũ bằng cách tách `ocSessionId` ngay từ
