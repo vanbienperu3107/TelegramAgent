@@ -7,17 +7,24 @@ Cầu nối để Zed (Agent Panel, giao thức ACP) nói chuyện với `openco
 — nên `bridge.mjs` dịch hai chiều giữa hai giao thức đó.
 
 **v1, không đầy đủ đặc tả ACP** nhưng đã có: chat văn bản, dropdown đổi model/agent,
-UI tool_call thật, `session/load`, xử lý `question.asked` — hình dạng do trực
-tiếp từ traffic thật của `opencode acp` và đặc tả `opencode-openapi.json`, xem
-chú thích trong `bridge.mjs`.
+UI tool_call thật, `session/load`, xử lý `question.asked`, UI `plan` (qua tính
+năng `todo` của OpenCode) — hình dạng do trực tiếp từ traffic thật của
+`opencode acp` và đặc tả `opencode-openapi.json`, xem chú thích trong `bridge.mjs`.
 
-**KHÔNG hỗ trợ UI `plan` (ACP `sessionUpdate: "plan"`) — vì OpenCode không có
-tính năng này để bắt vào**, đã kiểm tra toàn bộ `opencode-openapi.json`: không
-path/schema/event nào khớp `plan`. Chế độ `plan` của OpenCode chỉ giới hạn
-quyền (tắt tool sửa file); nội dung "kế hoạch" model viết ra là **Markdown
-thường** trong câu trả lời — đã hiển thị đúng qua `agent_message_chunk`, không
-có khung checklist tách biệt như Claude Code. Đây là giới hạn của OpenCode,
-không phải chỗ bridge còn thiếu.
+## UI `plan` (đã hỗ trợ — 2026-08-28, sửa lại kết luận sai trước đó)
+
+Lúc đầu kết luận nhầm "OpenCode không có tính năng plan" vì chỉ tìm từ khoá
+`plan` trong đặc tả — **OpenCode có tính năng này thật, chỉ gọi tên khác:
+`todo`/`todowrite`**. Tìm lại kỹ hơn ra:
+
+- `GET /session/:id/todo` — snapshot todo/plan hiện tại của phiên.
+- SSE `todo.updated` — `{sessionID, todos: [...]}`, bắn mỗi khi model cập nhật.
+- Schema `Todo`: `{content, status, priority}` — khớp gần như y hệt `plan
+  entries` của ACP, chuyển thẳng không cần đoán.
+
+Bridge dịch `todo.updated` thành `session/update` dạng `sessionUpdate: "plan"`
+ngay khi model cập nhật, và `session/load` phát lại trạng thái todo hiện tại
+qua `GET /session/:id/todo` khi nạp lại phiên cũ.
 
 ## Yêu cầu
 

@@ -151,6 +151,11 @@ const LOAI_QUAN_TAM = new Set([
   'question.asked',
   'question.replied',
   'question.rejected',
+  // `todo.updated` — do duoc tu opencode-openapi.json (2026-08-28), khong doan:
+  // schema Todo {content, status, priority} khop gan nhu y het "plan entries"
+  // cua ACP. Day la tinh nang PLAN THAT cua OpenCode, chi khac ten goi
+  // (todo/todowrite thay vi "plan").
+  'todo.updated',
 ]);
 
 function tachKhungSSE(dem) {
@@ -747,6 +752,20 @@ async function handleSessionPrompt(params) {
         await xuLyQuestionAsked(params.sessionId, ev);
         return;
       }
+      if (ev.type === 'todo.updated') {
+        // Tinh nang "plan" that cua OpenCode, chi khac ten (todo). Schema
+        // Todo {content,status,priority} do tu opencode-openapi.json khop
+        // gan nhu y het plan entries cua ACP — chuyen thang, khong doan.
+        const todos = ev.properties?.todos ?? [];
+        sendNotification('session/update', {
+          sessionId: params.sessionId,
+          update: {
+            sessionUpdate: 'plan',
+            entries: todos.map((t) => ({ content: t.content, priority: t.priority, status: t.status })),
+          },
+        });
+        return;
+      }
       if (ev.type === 'message.part.delta') {
         const props = ev.properties ?? {};
         if (props.field === 'text' && typeof props.delta === 'string') {
@@ -846,6 +865,24 @@ async function handleSessionLoad(params) {
       }
     }
   }
+
+  // Phat lai trang thai todo/plan hien tai cua phien, dung endpoint rieng
+  // GET /session/:id/todo (do tu opencode-openapi.json) — khong suy tu message.
+  try {
+    const todos = await ocJson(`/session/${ocSessionId}/todo`);
+    if (Array.isArray(todos) && todos.length > 0) {
+      sendNotification('session/update', {
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: 'plan',
+          entries: todos.map((t) => ({ content: t.content, priority: t.priority, status: t.status })),
+        },
+      });
+    }
+  } catch (e) {
+    ghiLog(`bridge.mjs: khong nap lai duoc todo/plan cua phien (${e.message})\n`);
+  }
+
   return {};
 }
 
