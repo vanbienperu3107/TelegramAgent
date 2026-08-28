@@ -211,6 +211,18 @@ tất, bridge:
    dung dạng text và tự hiện dòng cố định "Wrote file successfully" — đúng bug
    đã gặp thật khi chỉ dựa vào tool_call.
 
+**Tự mở file `.html` bằng trình duyệt (tuỳ chọn, 2026-08-28):** Zed **không có**
+preview HTML — xác nhận qua issue thật của chính team Zed
+([#21208](https://github.com/zed-industries/zed/issues/21208) "Webview via
+Extensions" còn mở, [#59598](https://github.com/zed-industries/zed/discussions/59598)
+mới là đề xuất API, chưa tồn tại). Đây là giới hạn nền tảng, không phải thiếu
+sót của bridge. Cách duy nhất hiện có để xem HTML render thật: mở bằng trình
+duyệt ngoài Zed. Bật `ACP_AUTO_OPEN_HTML=1` trong `env` của Zed để bridge tự
+mở file `.html`/`.htm` bằng trình duyệt mặc định ngay sau khi tải về
+(`cmd /c start` trên Windows, `open` trên macOS, `xdg-open` trên Linux). Mặc
+định **tắt** — bật tuỳ ý vì đây là hành vi phụ (mở cửa sổ ứng dụng khác), không
+phải lõi chức năng chat.
+
 ## session/load và đối chiếu sau mất kết nối (đã hỗ trợ)
 
 `session/load` nạp lại lịch sử phiên cũ bằng cách tách `ocSessionId` ngay từ
