@@ -211,6 +211,19 @@ tất, bridge:
    dung dạng text và tự hiện dòng cố định "Wrote file successfully" — đúng bug
    đã gặp thật khi chỉ dựa vào tool_call.
 
+**Xem HTML render NGAY TRONG Zed qua ảnh chụp (2026-08-28, mặc định bật):**
+Zed không có webview cho HTML, nhưng **Agent Panel render được ảnh inline**
+(theo release notes chính thức của Zed). Cách lách khả thi duy nhất: sau khi
+tải file `.html` về, bridge chụp trang đã render thành PNG bằng trình duyệt
+headless (Edge — có sẵn mọi Windows, đã kiểm chứng chạy đúng trên chính máy
+này; fallback Chrome/Chromium) rồi nhúng vào chat bằng cú pháp ảnh Markdown —
+bạn thấy **giao diện đã render** ngay trong khung chat, không chỉ mã nguồn.
+Tắt bằng `ACP_HTML_SCREENSHOT=0`; đổi kích thước qua
+`ACP_HTML_SCREENSHOT_SIZE` (mặc định `1024,768`). Không tìm thấy trình duyệt
+thì bỏ qua có ghi log, không hỏng lượt chat. **Chưa kiểm chứng** việc Agent
+Panel có load được ảnh từ `file:///` URL cục bộ hay không — nếu ảnh không
+hiện, báo lại để đổi sang cách nhúng khác (data URI/đường dẫn tương đối).
+
 **Tự mở file `.html` bằng trình duyệt (tuỳ chọn, 2026-08-28):** Zed **không có**
 preview HTML — xác nhận qua issue thật của chính team Zed
 ([#21208](https://github.com/zed-industries/zed/issues/21208) "Webview via
