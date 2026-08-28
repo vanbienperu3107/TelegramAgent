@@ -55,6 +55,15 @@ try {
   logStream = null; // van con stderr, khong de mat het log chi vi khong mo duoc file
 }
 
+// Thu muc luu file bridge tu tai ve tu workspace tren vpn4 — CUNG THU MUC voi
+// bridge.mjs mac dinh, doi duoc qua ACP_BRIDGE_DOWNLOAD_DIR. Xem file cho tool
+// write/edit trong guiToolCallUpdate() — noi dung file KHONG chi hien trong
+// chat ma con duoc ghi that ra day de nguoi dung "tai ve" dung nghia, khong
+// phu thuoc Zed co render duoc content block dang tai ve hay khong (chua kiem
+// chung — bao cao 2026-08-28 chi can file that tren may, khong chi xem noi dung).
+const DOWNLOAD_DIR = process.env.ACP_BRIDGE_DOWNLOAD_DIR
+  ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'downloads');
+
 function ghiLog(msg) {
   const dong = `[${new Date().toISOString()}] ${msg}`;
   process.stderr.write(dong);
@@ -757,16 +766,33 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
             ...(update.content ?? []),
             { type: 'content', content: { type: 'text', text: `--- ${duongDan} ---\n${fc.content}` } },
           ];
+
+          // Ghi THAT ra dia cuc bo (may chay Zed) — "tai ve" dung nghia, khong
+          // chi xem noi dung trong chat. Ten tep giu nguyen ten goc, cham thoi
+          // gian phia truoc de khong de ghi de neu goi nhieu lan.
+          let duongDanLocal = null;
+          try {
+            await fs.mkdir(DOWNLOAD_DIR, { recursive: true });
+            const tenTep = path.basename(duongDan) || 'tep-khong-ten';
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            duongDanLocal = path.join(DOWNLOAD_DIR, `${timestamp}-${tenTep}`);
+            const noiDung = fc.encoding === 'base64' ? Buffer.from(fc.content, 'base64') : fc.content;
+            await fs.writeFile(duongDanLocal, noiDung);
+          } catch (e2) {
+            ghiLog(`bridge.mjs: khong ghi duoc tep tai ve cuc bo cho "${duongDan}": ${e2.message}\n`);
+          }
+
           // GUI THEM qua agent_message_chunk (bong bong chat thuong) — khong chi
           // dua vao content cua tool_call. `kind:'edit'` co the co UI rieng trong
           // Zed (uu tien khoi diff, khong phai text thuong) va tu hien mot dong co
           // dinh kieu "Wrote file successfully" bo qua noi dung ta gui, dung nhu
           // bao cao 2026-08-28: content da gui nhung nguoi dung khong thay gi.
+          const dongTaiVe = duongDanLocal ? `\n📁 Đã tải về máy bạn: ${duongDanLocal}\n` : '';
           sendNotification('session/update', {
             sessionId: acpSessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
-              content: { type: 'text', text: `\n\n--- ${duongDan} ---\n\`\`\`\n${fc.content}\n\`\`\`\n` },
+              content: { type: 'text', text: `\n\n--- ${duongDan} ---${dongTaiVe}\n\`\`\`\n${fc.content}\n\`\`\`\n` },
             },
           });
         } else {

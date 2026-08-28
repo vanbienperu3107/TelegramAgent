@@ -193,17 +193,23 @@ thành `tool_call`/`tool_call_update` đúng schema thật của `opencode acp`
 xạ suy đoán hợp lý (`read`→read, `write`/`edit`/`patch`→edit...) hoặc `other` nếu
 chưa rõ — chỉ ảnh hưởng icon hiển thị, không ảnh hưởng chức năng.
 
-**Lấy lại nội dung file sau khi tạo/sửa (2026-08-28):** workspace của
-opencode-server nằm **trên vpn4**, không phải máy chạy Zed — file model tạo ra
-(`.html`, `.md`, code...) sẽ không tự xuất hiện trong file explorer của Zed
-(giống hệt lý do bot Telegram cần riêng `tep-ket-qua.ts` để gửi file về). Khi
-tool `write`/`edit`/`patch` hoàn tất, bridge tự gọi `GET /file/content?path=...`
-(đo từ `opencode-openapi.json`) đọc lại nội dung, gắn thẳng vào `content` của
-`tool_call_update` — bạn xem/copy được ngay trong khối tool_call ở Zed, không
-cần SSH vào vpn4. **Chưa kiểm chứng bằng traffic thật** tên trường chứa đường
-dẫn file trên `state.input` của tool `write`/`edit` (mẫu sự kiện đã bắt chỉ có
-`bash`) — bridge thử cả `filePath` và `path`, không thấy thì bỏ qua phần đọc
-lại (không làm hỏng tool_call chính).
+**Tự động tải file về máy (2026-08-28):** workspace của opencode-server nằm
+**trên vpn4**, không phải máy chạy Zed — file model tạo ra (`.html`, `.md`,
+code...) không tự xuất hiện trong file explorer của Zed (giống lý do bot
+Telegram cần riêng `tep-ket-qua.ts`). Đã đo được chính xác tên trường qua
+`diag-session.yml`: `state.input.filePath` (vd
+`/workspace/opencode-sandbox/test.md`). Khi tool `write`/`edit`/`patch` hoàn
+tất, bridge:
+
+1. Gọi `GET /file/content?path=...` đọc lại nội dung.
+2. **Ghi thật ra ổ đĩa cục bộ** (mặc định `zed-acp-bridge/downloads/`, đổi qua
+   `ACP_BRIDGE_DOWNLOAD_DIR`) — đây là bước quan trọng nhất, vì đích "tải file"
+   thật sự cần file tồn tại trên máy bạn, không chỉ xem nội dung trong chat.
+3. Gửi cả nội dung lẫn đường dẫn cục bộ qua `agent_message_chunk` (bong bóng
+   chat thường) — **không chỉ** nhét vào `content` của `tool_call_update`, vì
+   `kind:"edit"` có thể có UI riêng trong Zed (ưu tiên khối diff) bỏ qua nội
+   dung dạng text và tự hiện dòng cố định "Wrote file successfully" — đúng bug
+   đã gặp thật khi chỉ dựa vào tool_call.
 
 ## session/load và đối chiếu sau mất kết nối (đã hỗ trợ)
 
