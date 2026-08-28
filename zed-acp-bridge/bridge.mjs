@@ -634,7 +634,15 @@ async function handleRequest(msg) {
           // block text — khong can bridge tu tach thanh block anh rieng. audio/embeddedContext
           // van false: chua lam.
           agentCapabilities: { loadSession: true, promptCapabilities: { image: true, audio: false } },
+          // authMethods CO Y BO TRONG: xac thuc that (HTTP Basic toi opencode-server)
+          // da xong tu luc doc OPENCODE_SERVER_PASSWORD trong env, khong can Zed
+          // hoi lai gi them. Ke ca vay, Zed van co the tu goi 'authenticate' cho
+          // MOI custom agent (thay vi chi khi co authMethods) — xu ly ben duoi de
+          // khong chan nguoi dung o man hinh "Authenticate to ...".
         });
+        return;
+      case 'authenticate':
+        sendResult(id, {});
         return;
       case 'session/new':
         sendResult(id, await handleSessionNew(params));
