@@ -142,6 +142,15 @@ const LOAI_QUAN_TAM = new Set([
   'message.part.delta',
   'permission.asked',
   'permission.replied',
+  // Khong nam trong danh sach trang goc cua bot Telegram (mau 111 su kien khong
+  // co luot nao dung tool "question"). Do duoc rieng qua opencode-openapi.json:
+  // /question, /question/:id/reply, /question/:id/reject — kenh HOAN TOAN khac
+  // /permission. Thieu 3 dong nay la nguyen nhan that cua "model hoi lai roi
+  // treo vinh vien" (bao cao 2026-08-28): tool "question" ket qua ket vinh vien
+  // o trang thai "running" vi khong ai tra loi qua dung kenh nay.
+  'question.asked',
+  'question.replied',
+  'question.rejected',
 ]);
 
 function tachKhungSSE(dem) {
@@ -407,6 +416,54 @@ async function xuLyPermissionAsked(acpSessionId, ev) {
   await ocPostJson(`/session/${ocSessionId}/permissions/${permissionId}`, { response: reply }).catch((e) => {
     ghiLog(`bridge.mjs: khong tra loi duoc permission ${permissionId}: ${e.message}\n`);
   });
+}
+
+/**
+ * `question.asked` — tool "question" cua opencode hoi lai nguoi dung TRUOC khi
+ * lam tiep (khac han co che `permission.asked`, dung API rieng: xem chu thich
+ * cua LOAI_QUAN_TAM).
+ *
+ * Moi request co the co NHIEU cau hoi (`questions[]`), moi cau co nhieu lua
+ * chon. ACP `session/request_permission` chi thiet ke cho MOT lua chon co san
+ * (khong phai form nhieu cau hoi tu do) nen day la GHEP TAM: hoi tuan tu tung
+ * cau qua chinh co che permission, lay 1 lua chon moi cau (chua ho tro
+ * `multiple: true` chon nhieu — ghi log neu gap). Bat ky buoc nao loi/het gio
+ * thi TU CHOI CA REQUEST — an toan hon la doan bua cau tra loi.
+ */
+async function xuLyQuestionAsked(acpSessionId, ev) {
+  const p = ev.properties ?? {};
+  const requestId = p.id;
+  const cauHoi = p.questions ?? [];
+  const traLoi = [];
+  try {
+    for (const q of cauHoi) {
+      if (q.multiple) {
+        ghiLog(`bridge.mjs: cau hoi "${q.header}" cho chon nhieu (multiple:true), bridge chi ho tro chon 1\n`);
+      }
+      const res = await callClient(
+        'session/request_permission',
+        {
+          sessionId: acpSessionId,
+          toolCall: {
+            toolCallId: p.tool?.callID ?? requestId,
+            title: q.header ?? q.question ?? 'question',
+            kind: 'other',
+          },
+          options: (q.options ?? []).map((o) => ({ optionId: o.label, name: o.label, kind: 'allow_once' })),
+        },
+        PERMISSION_TIMEOUT_MS,
+      );
+      const chon = res?.outcome?.optionId;
+      if (!chon) throw new Error(`khong nhan duoc lua chon cho cau hoi "${q.header}"`);
+      traLoi.push([chon]);
+    }
+    await ocPostJson(`/question/${requestId}/reply`, { answers: traLoi });
+  } catch (e) {
+    ghiLog(`bridge.mjs: question.asked "${requestId}" tu choi vi ${e.message}\n`);
+    await ocPostJson(`/question/${requestId}/reject`, {}).catch((e2) => {
+      ghiLog(`bridge.mjs: khong tu choi duoc question ${requestId}: ${e2.message}\n`);
+    });
+  }
 }
 
 /**
@@ -684,6 +741,10 @@ async function handleSessionPrompt(params) {
     onEvent: async (ev) => {
       if (ev.type === 'permission.asked') {
         await xuLyPermissionAsked(params.sessionId, ev);
+        return;
+      }
+      if (ev.type === 'question.asked') {
+        await xuLyQuestionAsked(params.sessionId, ev);
         return;
       }
       if (ev.type === 'message.part.delta') {
