@@ -866,19 +866,37 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
             ghiLog(`bridge.mjs: khong ghi duoc tep tai ve cuc bo cho "${duongDan}": ${e2.message}\n`);
           }
 
-          // Neu la HTML: chup PNG bang trinh duyet headless roi gui nhu MOT
-          // CONTENT BLOCK ANH THAT (ACP {type:'image', data: base64, mimeType})
-          // — khong phai cu phap Markdown ![](file:///...). Da thu Markdown +
-          // file:/// URL (ke ca sau khi encodeURI dau cach) va Zed van khong
-          // render (2026-08-28) — co ve Agent Panel khong load anh tu file://.
-          // Content block image la cach dung giao thuc, khong phu thuoc cach
-          // Zed parse URL trong Markdown.
-          let anhBase64 = null;
+          // Neu la HTML: chup PNG bang trinh duyet headless roi nhet vao CONTENT
+          // CUA TOOL_CALL duoi dang ContentBlock::Resource nhung anh (blob base64).
+          //
+          // Ly do chon duong nay — DOC TU MA NGUON THAT cua Zed
+          // (crates/acp_thread/src/acp_thread.rs, 2026-08-28):
+          //   - anh trong agent_message_chunk: chi render neu la block MOI hoan
+          //     toan; da co text truoc do (dung ca cua ta) thi bi doi thanh chu
+          //     placeholder "Image" — vo dung. Da thu that va dung la khong hien.
+          //   - anh trong tool_call content: `new_tool_call_content` goi
+          //     `decode_embedded_resource_image` -> render ANH THAT.
+          // Truoc do con thu Markdown ![](file:///...) ke ca sau encodeURI —
+          // cung khong render (Agent Panel khong load anh tu file://).
           if (CHUP_HTML && duongDanLocal && /\.html?$/i.test(duongDanLocal)) {
             const png = await chupHtmlThanhPng(duongDanLocal);
             if (png) {
               try {
-                anhBase64 = (await fs.readFile(png)).toString('base64');
+                const anhBase64 = (await fs.readFile(png)).toString('base64');
+                update.content = [
+                  ...(update.content ?? []),
+                  {
+                    type: 'content',
+                    content: {
+                      type: 'resource',
+                      resource: {
+                        uri: encodeURI(`file:///${png.replace(/\\/g, '/')}`),
+                        mimeType: 'image/png',
+                        blob: anhBase64,
+                      },
+                    },
+                  },
+                ];
               } catch (e) {
                 ghiLog(`bridge.mjs: khong doc duoc PNG da chup "${png}": ${e.message}\n`);
               }
@@ -898,15 +916,6 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
               content: { type: 'text', text: `\n\n--- ${duongDan} ---${dongTaiVe}\n\`\`\`\n${fc.content}\n\`\`\`\n` },
             },
           });
-          if (anhBase64) {
-            sendNotification('session/update', {
-              sessionId: acpSessionId,
-              update: {
-                sessionUpdate: 'agent_message_chunk',
-                content: { type: 'image', mimeType: 'image/png', data: anhBase64 },
-              },
-            });
-          }
         } else {
           ghiLog(`bridge.mjs: /file/content "${duongDan}" tra ve hinh dang khong nhu ky vong: ${JSON.stringify(fc).slice(0, 200)}\n`);
         }
