@@ -132,6 +132,29 @@ trợ method này, hoặc lỗi mạng — bridge dùng `ACP_AUTO_APPROVE_FALLBA
 đang giữ DERP relay của cả tailnet). Đổi sang `"once"` chỉ khi bạn hiểu rõ rủi
 ro.
 
+## Câu hỏi làm rõ (`question.asked`, đã hỗ trợ — 2026-08-28)
+
+**Sự cố thật đã gặp:** model gọi tool nội bộ "question" để hỏi lại người dùng
+trước khi làm tiếp (ví dụ khi lập kế hoạch) → kẹt vĩnh viễn ở trạng thái
+`running`, `session.idle` không bao giờ tới, bridge timeout sau 10 phút, và
+**mở lại thread cũ (kể cả gõ "thử lại") không giải quyết được** vì câu hỏi treo
+vẫn còn nguyên trong lịch sử phiên.
+
+Nguyên nhân: đây là **kênh hoàn toàn khác** `permission.asked` — dò được qua
+`docs/opencode-openapi.json`: `GET /question`, `POST /question/:id/reply`
+(`{answers:[["nhãn đã chọn"],...]}`), `POST /question/:id/reject`. Không nằm
+trong danh sách sự kiện trắng gốc lấy từ mẫu 111 sự kiện của bot Telegram (mẫu
+đó không có lượt nào dùng tool "question").
+
+Đã thêm `question.asked`/`question.replied`/`question.rejected` vào danh sách
+trắng + `xuLyQuestionAsked()`: hỏi tuần tự từng câu qua chính cơ chế
+`session/request_permission` (ghép tạm — ACP không có form hỏi nhiều câu tự
+do), timeout hoặc lỗi bất kỳ bước nào → **từ chối cả yêu cầu** qua
+`POST /question/:id/reject` thay vì đoán bừa câu trả lời.
+
+**Giới hạn:** chưa hỗ trợ `multiple: true` (chọn nhiều lựa chọn cho 1 câu, chỉ
+lấy 1); chưa hỗ trợ trả lời tự do khi `custom: true`.
+
 ## Model/agent dropdown (đã hỗ trợ)
 
 `session/new` trả kèm `configOptions` (model + agent), và `session/set_config_option`
