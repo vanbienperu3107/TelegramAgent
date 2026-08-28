@@ -7,9 +7,17 @@ Cầu nối để Zed (Agent Panel, giao thức ACP) nói chuyện với `openco
 — nên `bridge.mjs` dịch hai chiều giữa hai giao thức đó.
 
 **v1, không đầy đủ đặc tả ACP** nhưng đã có: chat văn bản, dropdown đổi model/agent,
-và UI tool_call thật (pending/in_progress/completed, kèm output) — hình dạng do
-trực tiếp từ traffic thật của `opencode acp` (2026-08-27), xem chú thích đầu
-`bridge.mjs`. Còn thiếu: `session/load`, UI `plan`.
+UI tool_call thật, `session/load`, xử lý `question.asked` — hình dạng do trực
+tiếp từ traffic thật của `opencode acp` và đặc tả `opencode-openapi.json`, xem
+chú thích trong `bridge.mjs`.
+
+**KHÔNG hỗ trợ UI `plan` (ACP `sessionUpdate: "plan"`) — vì OpenCode không có
+tính năng này để bắt vào**, đã kiểm tra toàn bộ `opencode-openapi.json`: không
+path/schema/event nào khớp `plan`. Chế độ `plan` của OpenCode chỉ giới hạn
+quyền (tắt tool sửa file); nội dung "kế hoạch" model viết ra là **Markdown
+thường** trong câu trả lời — đã hiển thị đúng qua `agent_message_chunk`, không
+có khung checklist tách biệt như Claude Code. Đây là giới hạn của OpenCode,
+không phải chỗ bridge còn thiếu.
 
 ## Yêu cầu
 
