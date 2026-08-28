@@ -45,16 +45,18 @@ services:
     image: ghcr.io/vanbienperu3107/opencode-server:${OPENCODE_TAG:?can dat OPENCODE_TAG}
     container_name: opencode-server
     restart: unless-stopped
-    # 576m chu khong phai 512m: hai MCP server cuc bo (context7, exa) moi cai la
-    # mot tien trinh node rieng, khoang 60-100 MB moi cai. Tran cu du cho OpenCode
-    # mot minh nhung khong du cho ca ba.
+    # 2026-08-28: nang tu 576m len 900m — TAM THOI, gioi han trong RAM vat ly
+    # HIEN CO cua vpn4 (1.9GB tong, chua nang), cho toi khi nang RAM VPS xong
+    # moi tinh muc cao hon (2g nhu du dinh se vuot ca RAM vat ly may, xem thao
+    # luan 2026-08-28). 576m qua sat: dung toi 487MB/576MB (84.63%) da bi kernel
+    # OOM-kill it nhat 1 lan that (bridge.log ghi hang loat "terminated"/"502"
+    # tren moi phien, opencode-server tu restart theo `restart: unless-stopped`).
     #
-    # Tong stack thanh 896/900 MB — con 4 MB dem. Do la RAT SAT: bat them mot MCP
-    # cuc bo nua (brave dang tat) se phai nang tran tong hoac tat bot cai khac.
-    # `oom_score_adj: 800` van giu nguyen y nghia: cham tran thi container nay
-    # chet truoc, bot song sot va bao duoc cho nguoi dung.
-    mem_limit: 576m
-    memswap_limit: 1g
+    # `oom_score_adj: 800` van giu nguyen y nghia: cham tran RIENG cua container
+    # nay thi no chet truoc, cac container khac (nhat la derper — DERP relay
+    # cua ca tailnet) song sot.
+    mem_limit: 900m
+    memswap_limit: 1500m
     oom_score_adj: 800
     pids_limit: 512
     security_opt: ["no-new-privileges:true"]
