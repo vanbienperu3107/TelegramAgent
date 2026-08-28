@@ -878,25 +878,40 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
           //     `decode_embedded_resource_image` -> render ANH THAT.
           // Truoc do con thu Markdown ![](file:///...) ke ca sau encodeURI —
           // cung khong render (Agent Panel khong load anh tu file://).
+          // CAP NHAT 2026-08-28 (lan thu 4): nhet anh vao content cua CHINH
+          // tool_call write cung khong hien — de y rang CA text lan anh nhet vao
+          // do deu chua bao gio hien thi ("Wrote file successfully" co dinh),
+          // tuc Zed ve tool kind 'edit' bang UI diff rieng, bo qua toan bo
+          // `content`. Giai phap: phat mot TOOL_CALL RIENG (id `-preview`,
+          // kind 'read', khong phai 'edit') chi chua dung 1 content la anh —
+          // Zed ve tool call thuong co content, va decode_embedded_resource_image
+          // (doc tu ma nguon that) se render anh that ben trong khoi do.
           if (CHUP_HTML && duongDanLocal && /\.html?$/i.test(duongDanLocal)) {
             const png = await chupHtmlThanhPng(duongDanLocal);
             if (png) {
               try {
                 const anhBase64 = (await fs.readFile(png)).toString('base64');
-                update.content = [
-                  ...(update.content ?? []),
-                  {
-                    type: 'content',
-                    content: {
-                      type: 'resource',
-                      resource: {
-                        uri: encodeURI(`file:///${png.replace(/\\/g, '/')}`),
-                        mimeType: 'image/png',
-                        blob: anhBase64,
+                sendNotification('session/update', {
+                  sessionId: acpSessionId,
+                  update: {
+                    sessionUpdate: 'tool_call',
+                    toolCallId: `${toolCallId}-preview`,
+                    status: 'completed',
+                    kind: 'read',
+                    title: `Preview: ${path.basename(duongDanLocal)}`,
+                    content: [{
+                      type: 'content',
+                      content: {
+                        type: 'resource',
+                        resource: {
+                          uri: encodeURI(`file:///${png.replace(/\\/g, '/')}`),
+                          mimeType: 'image/png',
+                          blob: anhBase64,
+                        },
                       },
-                    },
+                    }],
                   },
-                ];
+                });
               } catch (e) {
                 ghiLog(`bridge.mjs: khong doc duoc PNG da chup "${png}": ${e.message}\n`);
               }
