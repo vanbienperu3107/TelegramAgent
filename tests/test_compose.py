@@ -73,21 +73,21 @@ def test_thu_tu_uu_tien_oom_dung_chieu(services):
     assert adj["opencode-server"] > adj["telegram-gateway"] > adj["pg-tunnel"]
 
 
-def test_tong_ngan_sach_ram_khong_vuot_1220mb(services):
-    """Nang tu 900 MB len 1220 MB ngay 2026-08-28 — TAM, cho toi khi vpn4 duoc
-    nang RAM vat ly (hien chi co 1968 MB tong).
+def test_tong_ngan_sach_ram_khong_vuot_1856mb(services):
+    """900 MB -> 1856 MB ngay 2026-08-28, SAU KHI vpn4 duoc nang RAM vat ly that
+    tu 1.9GB len 3.8GB (xac nhan qua diag-opencode.yml: uptime "up 14 min" +
+    Mem: 3.8Gi tong, ~2.9GB kha dung luc kiem tra).
 
-    Ly do nang: opencode-server (576m) bi kernel OOM-kill that su kien
-    2026-08-28 (dung 487/576 MB = 84.63%, bridge.log ghi hang loat
-    "terminated"/"502" tren moi phien roi tu restart). 900m cho rieng
-    opencode-server + 256m gateway + 64m tunnel = 1220 MB. Do song luc kiem tra
-    cho thay vpn4 con ~928 MB kha dung tai thoi diem do — con bien, khong sat
-    nhu tinh toan cu (692 MB da dung truoc do trong Telegram.md dong 2562)."""
+    opencode-server 1536m + gateway 256m + tunnel 64m = 1856 MB, con du
+    ~2GB cho he dieu hanh + cac stack khac tren cung may (derper, cliproxy,
+    vpn-gw...). Lich su nang dan: 576m (goc) -> 900m (RAM cu 1.9GB, tam) ->
+    1536m (sau khi nang RAM vat ly) — xem git blame de biet ly do tung buoc,
+    dac biet su co OOM-kill that ngay 2026-08-28 khi con 576m."""
     total = 0
     for spec in services.values():
         raw = str(spec["mem_limit"]).lower().rstrip("b")
         total += int(raw[:-1]) * (1024 if raw.endswith("g") else 1)
-    assert total <= 1220, "tong mem_limit %d MB vuot tran 1220 MB" % total
+    assert total <= 1856, "tong mem_limit %d MB vuot tran 1856 MB" % total
 
 
 def test_moi_service_gioi_han_log(services):
