@@ -108,6 +108,19 @@ có dòng nào của bridge. Vì vậy bridge tự ghi log ra file riêng, mặc
 `ACP_BRIDGE_LOG_PATH` nếu muốn nơi khác). Khi Zed báo lỗi hoặc im lặng không rõ
 lý do, mở file này lên xem dòng cuối cùng trước khi báo cáo.
 
+**Cập nhật 2026-08-28:** ban đầu chỉ ghi log khi có lỗi — một lượt đang chạy
+bình thường (dù chậm) thì file vẫn trống suốt, không phân biệt được "đang chạy"
+với "treo thật". Giờ ghi cả lúc **bắt đầu** (`>>>`) và **kết thúc** (`<<<`, kèm
+số mili-giây) của mọi request, ví dụ:
+
+```text
+[...] bridge.mjs: >>> session/prompt (id=5) sessionId=zed-1-ses_...
+[...] bridge.mjs: <<< session/prompt (id=5) OK, 3421ms
+```
+
+Nếu thấy dòng `>>>` mà mãi không có `<<<` tương ứng, nghĩa là bridge THẬT SỰ
+đang kẹt ở request đó — khác với trước đây không phân biệt được.
+
 ## Quyền (permission.asked)
 
 `opencode-server` được phép chạy `bash`/sửa file. Khi model cần chạy lệnh, sự
