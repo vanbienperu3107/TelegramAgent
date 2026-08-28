@@ -1,0 +1,30 @@
+name: Diag opencode session (read-only)
+
+# Chan doan mot session opencode-server CU THE — chi doc, khong sua gi. Dung
+# khi bridge bao mot luot session/prompt hoan tat qua nhanh (kieu 1-2s, trong
+# khi completion that thuong mat 20-30s) de xem THAT SU server tra ve gi.
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        description: "opencode session id (vd ses_fb98cae66ffe2K1wHQmAq6eqGz)"
+        required: true
+
+jobs:
+  diag:
+    name: Goi GET /session/:id/message va /permission
+    runs-on: ubuntu-latest
+    steps:
+      - name: Goi API that (Basic Auth tu secret, khong in ra log)
+        env:
+          PW: ${{ secrets.OPENCODE_SERVER_PASSWORD }}
+          SID: ${{ inputs.session_id }}
+        run: |
+          AUTH=$(printf 'opencode:%s' "$PW" | base64 -w0)
+          echo "==> GET /session/$SID/message"
+          curl -sS --max-time 20 -H "Authorization: Basic $AUTH" \
+            "https://opencode.hangocthanh.io.vn/session/$SID/message" | python3 -m json.tool || true
+          echo ""
+          echo "==> GET /permission (con treo cho duyet khong?)"
+          curl -sS --max-time 20 -H "Authorization: Basic $AUTH" \
+            "https://opencode.hangocthanh.io.vn/permission" | python3 -m json.tool || true
