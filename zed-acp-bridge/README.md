@@ -147,6 +147,21 @@ Khi mất kết nối SSE giữa lượt (không có replay — `docs/opencode-a
 thiếu thay vì để mất hẳn. Đánh đổi: có thể trùng lặp với phần delta đã gửi
 trước đó (chưa khử trùng) — chấp nhận được vì còn hơn câu trả lời biến mất.
 
+## Một kết nối `/event` cho cả phiên (2026-08-27, sửa sự cố "phản hồi chậm dần")
+
+**Trước đây** mỗi `session/prompt` tự mở một kết nối SSE `/event` riêng rồi huỷ
+ngay khi xong lượt. Log thật trên vpn4 cho thấy hai hệ quả: `caddy-edge` báo lỗi
+`aborting with incomplete response ... broken pipe` mỗi lần huỷ giữa chừng, và
+`opencode-server` tự cảnh báo rò rỉ listener nội bộ (kiểu `MaxListenersExceeded`,
+đếm tới 11) — hậu quả tích luỹ dần theo số lượt chat, khiến server (giới hạn chỉ
+`576m` RAM) càng dùng càng nặng, đúng cảm giác "phản hồi chậm dần" người dùng
+báo cáo.
+
+**Giờ** mỗi phiên (`VongDoiPhien`) chỉ mở **một** kết nối `/event`, sống suốt
+vòng đời phiên, dùng chung cho mọi lượt `session/prompt` — theo đúng mẫu
+`LuongSuKien` (`src/services/event-stream.ts`) bot Telegram đã dùng ổn định.
+Giảm số lần mở/huỷ SSE từ "mỗi lượt chat" xuống "mỗi lần mở Agent Panel".
+
 ## Giới hạn đã biết
 
 - `mcpServers` Zed gửi trong `session/new` bị bỏ qua — MCP của opencode-server

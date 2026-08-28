@@ -197,7 +197,9 @@ class VongDoiPhien {
     this.providerID = providerID;
     this.modelID = modelID;
     this.agentName = agentName;
-    this.dungLuong = false;
+    // Mot luong /event SONG SUOT ca phien, khong mo/dong theo tung luot — xem
+    // chu thich cua LuongPhien ben duoi ve ly do doi kien truc nay.
+    this.luong = new LuongPhien(ocSessionId);
   }
 }
 
@@ -230,45 +232,120 @@ async function dsAgentConfigOptions() {
 }
 
 /**
- * Mo mot vong ket noi SSE, loc theo sessionID + messageID cua luot hien tai,
- * goi `onEvent` cho tung su kien quan tam, tra ve khi gap session.idle hoac loi.
+ * Mot ket noi `/event` SONG SUOT ca phien opencode, khong mo-roi-dong theo tung
+ * luot hoi-dap.
  *
- * KHONG replay (da do trong docs/opencode-api-do-duoc.md): neu mat ket noi giua
- * chung, ta doi chieu bang GET /session/:id/message roi coi nhu ket thuc — tot
- * hon la treo vinh vien.
+ * TRUOC DAY moi `session/prompt` tu mo 1 ket noi SSE rieng roi huy (`cancel()`)
+ * ngay khi `session.idle`. Do 2026-08-27 tren log that cua vpn4:
+ *   - `caddy-edge`: "aborting with incomplete response ... broken pipe" — huy
+ *     giua chung lam Caddy ghi loi khi con du lieu dang bay.
+ *   - `opencode-server`: canh bao kieu MaxListeners tren mot EventEmitter noi
+ *     bo (dem toi 11) — moi lan mo/huy `/event` de lai mot listener chua chac
+ *     duoc don sach kip, tich luy qua nhieu luot lam server (mem_limit chi
+ *     576m) nang dan len — dung la nguyen nhan "phan hoi cham dan" nguoi dung
+ *     bao cao, khong phai do mang/proxy.
+ * Sua bang cach giu DUY MOT ket noi cho ca doi phien: mo lan dau luc tao phien
+ * (VongDoiPhien), dung chung cho moi `session/prompt` sau do — giam so lan
+ * mo/huy tu "1 moi luot" xuong "1 moi phien Zed", dung mau `LuongSuKien` cua
+ * bot Telegram (`src/services/event-stream.ts`) da chung minh on dinh.
  */
-async function theoDoiMotLuot({ ocSessionId, messageID, onEvent }) {
-  const url = `${OPENCODE_URL}/event`;
-  const res = await fetch(url, { headers: headers({ accept: 'text/event-stream' }) });
-  if (!res.ok || !res.body) {
-    throw new Error(`GET /event -> HTTP ${res.status}`);
+class LuongPhien {
+  constructor(ocSessionId) {
+    this.ocSessionId = ocSessionId;
+    this.dung = false;
+    this.lanThu = 0;
+    /** { onEvent(ev): void|Promise<void>, resolve(): void } cua luot dang cho, hoac null. */
+    this.currentHandler = null;
+    void this.chay();
   }
-  const doc = res.body.getReader();
-  const giaiMa = new TextDecoder();
-  let dem = '';
-  let daXongSaySessionIdle = false;
-  try {
-    for (;;) {
-      const { done, value } = await doc.read();
-      if (done) break;
-      dem += giaiMa.decode(value, { stream: true });
-      const { suKien, du } = tachKhungSSE(dem);
-      dem = du;
-      for (const ev of suKien) {
-        if (!LOAI_QUAN_TAM.has(ev.type)) continue;
-        const props = ev.properties ?? {};
-        if (props.sessionID && props.sessionID !== ocSessionId) continue;
-        await onEvent(ev);
-        if (ev.type === 'session.idle') {
-          daXongSaySessionIdle = true;
-        }
+
+  dong() {
+    this.dung = true;
+  }
+
+  async chay() {
+    while (!this.dung) {
+      this.lanThu += 1;
+      try {
+        if (this.lanThu > 1) await this.doiChieuSauKhiNoiLai();
+        await this.motVongKetNoi();
+      } catch (e) {
+        process.stderr.write(`bridge.mjs: luong /event (session ${this.ocSessionId}) loi (${e.message})\n`);
       }
-      if (daXongSaySessionIdle) break;
+      if (this.dung) break;
+      // Lui dan co tran: 500ms, 1s, 2s... toi da 30s. Giong LuongSuKien ben bot.
+      const cho = Math.min(30_000, 2 ** Math.min(this.lanThu, 5) * 500);
+      await new Promise((r) => setTimeout(r, cho));
     }
-  } finally {
-    await doc.cancel().catch(() => undefined);
   }
-  return daXongSaySessionIdle;
+
+  /**
+   * KHONG co replay (docs/opencode-api-do-duoc.md §4.1) — su kien mat trong
+   * luc dut ket noi la mat vinh vien. Neu dang co mot luot `session/prompt`
+   * treo cho, doi chieu bang `GET /session/:id/message`: tim thay cau tra loi
+   * cuoi cung co noi dung thi coi nhu xong va gui not phan con thieu — con hon
+   * de Zed treo vo thoi han.
+   */
+  async doiChieuSauKhiNoiLai() {
+    if (!this.currentHandler) return;
+    try {
+      const list = await ocJson(`/session/${this.ocSessionId}/message`);
+      const messages = Array.isArray(list) ? list : [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const m = messages[i];
+        if (m?.info?.role !== 'assistant') continue;
+        const daiDien = (m.parts ?? [])
+          .filter((p) => p.type === 'text' && typeof p.text === 'string')
+          .map((p) => p.text)
+          .join('')
+          .trim();
+        if (daiDien.length > 0) {
+          await this.currentHandler.onEvent({
+            type: 'message.part.delta',
+            properties: { field: 'text', delta: `\n\n[noi lai sau mat ket noi]\n${daiDien}` },
+          });
+        }
+        break;
+      }
+    } catch (e) {
+      process.stderr.write(`bridge.mjs: doi chieu sau mat ket noi that bai (${e.message})\n`);
+    } finally {
+      this.currentHandler?.resolve?.();
+      this.currentHandler = null;
+    }
+  }
+
+  async motVongKetNoi() {
+    const res = await fetch(`${OPENCODE_URL}/event`, { headers: headers({ accept: 'text/event-stream' }) });
+    if (!res.ok || !res.body) {
+      throw new Error(`GET /event -> HTTP ${res.status}`);
+    }
+    const doc = res.body.getReader();
+    const giaiMa = new TextDecoder();
+    let dem = '';
+    try {
+      for (;;) {
+        const { done, value } = await doc.read();
+        if (done) break;
+        dem += giaiMa.decode(value, { stream: true });
+        const { suKien, du } = tachKhungSSE(dem);
+        dem = du;
+        for (const ev of suKien) {
+          if (!LOAI_QUAN_TAM.has(ev.type)) continue;
+          const props = ev.properties ?? {};
+          if (props.sessionID && props.sessionID !== this.ocSessionId) continue;
+          await this.currentHandler?.onEvent(ev);
+          if (ev.type === 'session.idle' && this.currentHandler) {
+            this.currentHandler.resolve();
+            this.currentHandler = null;
+          }
+        }
+        if (this.dung) break;
+      }
+    } finally {
+      await doc.cancel().catch(() => undefined);
+    }
+  }
 }
 
 async function xuLyPermissionAsked(acpSessionId, ev) {
@@ -424,76 +501,60 @@ async function handleSessionPrompt(params) {
   const messageID = sinhMessageId();
   const toolCallDaGui = new Set();
 
-  await ocPostJson(
-    `/session/${phien.ocSessionId}/prompt_async`,
-    {
-      messageID,
-      model: { providerID: phien.providerID, modelID: phien.modelID },
-      agent: phien.agentName,
-      parts: [{ type: 'text', text }],
-    },
-    30_000,
-  );
-
-  try {
-    await theoDoiMotLuot({
-      ocSessionId: phien.ocSessionId,
-      messageID,
-      onEvent: async (ev) => {
-        if (ev.type === 'permission.asked') {
-          await xuLyPermissionAsked(params.sessionId, ev);
-          return;
-        }
-        if (ev.type === 'message.part.delta') {
-          const props = ev.properties ?? {};
-          if (props.field === 'text' && typeof props.delta === 'string') {
-            sendNotification('session/update', {
-              sessionId: params.sessionId,
-              update: {
-                sessionUpdate: 'agent_message_chunk',
-                content: { type: 'text', text: props.delta },
-              },
-            });
-          }
-          return;
-        }
-        if (ev.type === 'message.part.updated') {
-          const part = ev.properties?.part;
-          if (part?.type === 'tool' && part?.callID) {
-            guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
-          }
-        }
-      },
-    });
-  } catch (e) {
-    // KHONG replay (docs/opencode-api-do-duoc.md §4.1): mat ket noi SSE giua
-    // luot la mat vinh vien nhung su kien con lai, khong co cach noi lai va
-    // nhan bu. Doi chieu bang GET /session/:id/message roi gui not phan con
-    // thieu — CO THE trung lap voi delta da gui truoc do (chua khu trung),
-    // nhung con hon la cau tra loi bien mat hoac Zed treo cho mai khong xong.
-    process.stderr.write(`bridge.mjs: mat ket noi SSE giua luot (${e.message}), doi chieu bang GET /session/:id/message\n`);
-    try {
-      const list = await ocJson(`/session/${phien.ocSessionId}/message`);
-      const messages = Array.isArray(list) ? list : [];
-      for (let i = messages.length - 1; i >= 0; i -= 1) {
-        const m = messages[i];
-        if (m?.info?.role !== 'assistant') continue;
-        const daiDien = (m.parts ?? [])
-          .filter((p) => p.type === 'text' && typeof p.text === 'string')
-          .map((p) => p.text)
-          .join('')
-          .trim();
-        if (daiDien.length > 0) {
+  // Dang ky handler TRUOC khi POST — tranh lo hong: mot su kien (vd
+  // permission.asked) toi ngay sau khi opencode nhan prompt nhung truoc khi ta
+  // kip gan currentHandler thi se roi vao khoang trong, khong ai xu ly.
+  let resolveXongLuot;
+  const xongLuot = new Promise((resolve) => { resolveXongLuot = resolve; });
+  phien.luong.currentHandler = {
+    resolve: resolveXongLuot,
+    onEvent: async (ev) => {
+      if (ev.type === 'permission.asked') {
+        await xuLyPermissionAsked(params.sessionId, ev);
+        return;
+      }
+      if (ev.type === 'message.part.delta') {
+        const props = ev.properties ?? {};
+        if (props.field === 'text' && typeof props.delta === 'string') {
           sendNotification('session/update', {
             sessionId: params.sessionId,
-            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `\n\n[noi lai sau mat ket noi]\n${daiDien}` } },
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: props.delta },
+            },
           });
         }
-        break;
+        return;
       }
-    } catch (e2) {
-      process.stderr.write(`bridge.mjs: doi chieu that bai (${e2.message})\n`);
-    }
+      if (ev.type === 'message.part.updated') {
+        const part = ev.properties?.part;
+        if (part?.type === 'tool' && part?.callID) {
+          guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
+        }
+      }
+    },
+  };
+
+  try {
+    await ocPostJson(
+      `/session/${phien.ocSessionId}/prompt_async`,
+      {
+        messageID,
+        model: { providerID: phien.providerID, modelID: phien.modelID },
+        agent: phien.agentName,
+        parts: [{ type: 'text', text }],
+      },
+      30_000,
+    );
+
+    // Chan treo vinh vien: neu opencode-server khong bao gio phat session.idle
+    // (loi phia no ma khong thay tren SSE), Zed van phai nhan duoc phan hoi.
+    const hetHan = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('timeout doi session.idle')), 10 * 60_000);
+    });
+    await Promise.race([xongLuot, hetHan]);
+  } finally {
+    phien.luong.currentHandler = null;
   }
 
   return { stopReason: 'end_turn' };
