@@ -717,6 +717,10 @@ const TOOL_GHI_FILE = new Set(['write', 'edit', 'patch']);
  * Hinh dang `part.state` (pending/running/completed) do truc tiep tu
  * `docs/opencode-events-sample.jsonl`. Hinh dang ACP tool_call/tool_call_update
  * do truc tiep tu binary `opencode acp` that (2026-08-27) — xem chu thich dau file.
+ *
+ * `acpSessionId` cung duoc dung o day (khong chi trong tool_call) de gui THEM
+ * mot `agent_message_chunk` rieng khi doc lai duoc noi dung file — xem chu
+ * thich o cho goi /file/content ben duoi.
  */
 async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
   const toolCallId = part.callID;
@@ -753,6 +757,20 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
             ...(update.content ?? []),
             { type: 'content', content: { type: 'text', text: `--- ${duongDan} ---\n${fc.content}` } },
           ];
+          // GUI THEM qua agent_message_chunk (bong bong chat thuong) — khong chi
+          // dua vao content cua tool_call. `kind:'edit'` co the co UI rieng trong
+          // Zed (uu tien khoi diff, khong phai text thuong) va tu hien mot dong co
+          // dinh kieu "Wrote file successfully" bo qua noi dung ta gui, dung nhu
+          // bao cao 2026-08-28: content da gui nhung nguoi dung khong thay gi.
+          sendNotification('session/update', {
+            sessionId: acpSessionId,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: `\n\n--- ${duongDan} ---\n\`\`\`\n${fc.content}\n\`\`\`\n` },
+            },
+          });
+        } else {
+          ghiLog(`bridge.mjs: /file/content "${duongDan}" tra ve hinh dang khong nhu ky vong: ${JSON.stringify(fc).slice(0, 200)}\n`);
         }
       } catch (e) {
         ghiLog(`bridge.mjs: khong doc lai duoc noi dung tep "${duongDan}" sau khi ghi (${e.message})\n`);
