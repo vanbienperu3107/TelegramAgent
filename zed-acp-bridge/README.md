@@ -98,6 +98,16 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 
 Kỳ vọng nhận lại một dòng `{"jsonrpc":"2.0","id":1,"result":{...}}`.
 
+## Xem log khi Zed "im lặng"/treo (2026-08-28)
+
+**Zed KHÔNG ghi lại `stderr` của bridge vào `Zed.log`** — đã xác nhận bằng cách
+đọc trực tiếp file log thật (`%LOCALAPPDATA%\Zed\logs\Zed.log` trên Windows),
+chỉ thấy lỗi cấp Zed (`acp_thread Error in run turn`, hang detection UI), không
+có dòng nào của bridge. Vì vậy bridge tự ghi log ra file riêng, mặc định
+`bridge.log` **cùng thư mục** với `bridge.mjs` (đổi qua biến môi trường
+`ACP_BRIDGE_LOG_PATH` nếu muốn nơi khác). Khi Zed báo lỗi hoặc im lặng không rõ
+lý do, mở file này lên xem dòng cuối cùng trước khi báo cáo.
+
 ## Quyền (permission.asked)
 
 `opencode-server` được phép chạy `bash`/sửa file. Khi model cần chạy lệnh, sự

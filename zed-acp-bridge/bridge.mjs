@@ -36,8 +36,30 @@
 
 import { Buffer } from 'node:buffer';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
+import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
+
+// Zed KHONG ghi lai stderr cua tien trinh con custom agent_servers vao log cua
+// no (da xac nhan bang cach doc Zed.log that — chi co loi cap Zed nhu
+// "acp_thread Error in run turn", khong co dong nao cua bridge). Ghi them ra
+// file rieng thi moi co gi de doc khi loi. Mac dinh nam CUNG THU MUC voi
+// bridge.mjs de nguoi dung de tim; doi duoc qua ACP_BRIDGE_LOG_PATH.
+const LOG_PATH = process.env.ACP_BRIDGE_LOG_PATH
+  ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'bridge.log');
+let logStream;
+try {
+  logStream = fsSync.createWriteStream(LOG_PATH, { flags: 'a' });
+} catch {
+  logStream = null; // van con stderr, khong de mat het log chi vi khong mo duoc file
+}
+
+function ghiLog(msg) {
+  const dong = `[${new Date().toISOString()}] ${msg}`;
+  process.stderr.write(dong);
+  logStream?.write(dong);
+}
 
 const OPENCODE_URL = (process.env.OPENCODE_URL ?? '').replace(/\/+$/, '');
 const OPENCODE_SERVER_PASSWORD = process.env.OPENCODE_SERVER_PASSWORD ?? '';
@@ -51,7 +73,7 @@ const AUTO_APPROVE_FALLBACK = process.env.ACP_AUTO_APPROVE_FALLBACK ?? 'reject';
 const PERMISSION_TIMEOUT_MS = Number(process.env.ACP_PERMISSION_TIMEOUT_MS ?? 60_000);
 
 if (!OPENCODE_URL || !OPENCODE_SERVER_PASSWORD) {
-  process.stderr.write(
+  ghiLog(
     'bridge.mjs: thieu bien moi truong OPENCODE_URL hoac OPENCODE_SERVER_PASSWORD\n',
   );
   process.exit(1);
@@ -64,7 +86,7 @@ const PROXY_URL = process.env.HTTPS_PROXY || process.env.https_proxy || process.
 if (PROXY_URL) {
   const { ProxyAgent, setGlobalDispatcher } = await import('undici');
   setGlobalDispatcher(new ProxyAgent(PROXY_URL));
-  process.stderr.write(`bridge.mjs: di qua proxy ${PROXY_URL}\n`);
+  ghiLog(`bridge.mjs: di qua proxy ${PROXY_URL}\n`);
 }
 
 const BASIC_AUTH = `Basic ${Buffer.from(`opencode:${OPENCODE_SERVER_PASSWORD}`, 'utf8').toString('base64')}`;
@@ -275,7 +297,7 @@ class LuongPhien {
         if (this.lanThu > 1) await this.doiChieuSauKhiNoiLai();
         await this.motVongKetNoi();
       } catch (e) {
-        process.stderr.write(`bridge.mjs: luong /event (session ${this.ocSessionId}) loi (${e.message})\n`);
+        ghiLog(`bridge.mjs: luong /event (session ${this.ocSessionId}) loi (${e.message})\n`);
       }
       if (this.dung) break;
       // Lui dan co tran: 500ms, 1s, 2s... toi da 30s. Giong LuongSuKien ben bot.
@@ -313,7 +335,7 @@ class LuongPhien {
         break;
       }
     } catch (e) {
-      process.stderr.write(`bridge.mjs: doi chieu sau mat ket noi that bai (${e.message})\n`);
+      ghiLog(`bridge.mjs: doi chieu sau mat ket noi that bai (${e.message})\n`);
     } finally {
       this.currentHandler?.resolve?.();
       this.currentHandler = null;
@@ -378,12 +400,12 @@ async function xuLyPermissionAsked(acpSessionId, ev) {
     );
     reply = res?.outcome?.optionId ?? AUTO_APPROVE_FALLBACK;
   } catch (e) {
-    process.stderr.write(
+    ghiLog(
       `bridge.mjs: session/request_permission that bai (${e.message}), dung fallback "${AUTO_APPROVE_FALLBACK}"\n`,
     );
   }
   await ocPostJson(`/session/${ocSessionId}/permissions/${permissionId}`, { response: reply }).catch((e) => {
-    process.stderr.write(`bridge.mjs: khong tra loi duoc permission ${permissionId}: ${e.message}\n`);
+    ghiLog(`bridge.mjs: khong tra loi duoc permission ${permissionId}: ${e.message}\n`);
   });
 }
 
@@ -412,7 +434,7 @@ async function xayConfigOptions(phien) {
       options: modelOptions,
     });
   } catch (e) {
-    process.stderr.write(`bridge.mjs: khong lay duoc danh sach model (${e.message}), bo qua dropdown\n`);
+    ghiLog(`bridge.mjs: khong lay duoc danh sach model (${e.message}), bo qua dropdown\n`);
   }
   try {
     const agentOptions = await dsAgentConfigOptions();
@@ -427,7 +449,7 @@ async function xayConfigOptions(phien) {
       });
     }
   } catch (e) {
-    process.stderr.write(`bridge.mjs: khong lay duoc danh sach agent (${e.message}), bo qua dropdown\n`);
+    ghiLog(`bridge.mjs: khong lay duoc danh sach agent (${e.message}), bo qua dropdown\n`);
   }
   return configOptions;
 }
@@ -522,7 +544,7 @@ async function resourceLinkThanhFilePart(block) {
       filename: block.name || tenTepTuUri(block.uri),
     };
   } catch (e) {
-    process.stderr.write(`bridge.mjs: khong doc duoc tep dinh kem "${duongDan}": ${e.message}\n`);
+    ghiLog(`bridge.mjs: khong doc duoc tep dinh kem "${duongDan}": ${e.message}\n`);
     return null;
   }
 }
@@ -557,7 +579,7 @@ async function partsTuPrompt(promptBlocks) {
     if (filePart) {
       parts.push(filePart);
     } else {
-      process.stderr.write(`bridge.mjs: bo qua content block khong dich duoc (type=${b?.type})\n`);
+      ghiLog(`bridge.mjs: bo qua content block khong dich duoc (type=${b?.type})\n`);
     }
   }
   return parts;
@@ -780,7 +802,7 @@ rl.on('line', (line) => {
   try {
     msg = JSON.parse(trimmed);
   } catch {
-    process.stderr.write(`bridge.mjs: bo qua dong khong phai JSON: ${trimmed.slice(0, 200)}\n`);
+    ghiLog(`bridge.mjs: bo qua dong khong phai JSON: ${trimmed.slice(0, 200)}\n`);
     return;
   }
   if (msg.method && msg.id !== undefined) {
