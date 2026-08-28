@@ -874,7 +874,11 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
           if (CHUP_HTML && duongDanLocal && /\.html?$/i.test(duongDanLocal)) {
             const png = await chupHtmlThanhPng(duongDanLocal);
             if (png) {
-              const urlAnh = `file:///${png.replace(/\\/g, '/')}`;
+              // encodeURI BAT BUOC: duong dan may nay co dau cach ("05. Peru")
+              // lam Markdown cat URL ngay tai dau cach — anh khong render, hien
+              // nguyen van "![preview](file:///D:/05." + phan sau thanh chu
+              // thuong. Bug that, thay ro trong anh chup 2026-08-28.
+              const urlAnh = encodeURI(`file:///${png.replace(/\\/g, '/')}`);
               dongAnh = `\n![preview](${urlAnh})\n`;
             }
           }
