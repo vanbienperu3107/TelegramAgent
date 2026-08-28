@@ -25,7 +25,10 @@
  * `opencode acp` that. Hinh dang o day duoc do truc tiep bang cach goi tay vao
  * `opencode acp` cuc bo (2026-08-27), khong doan:
  *   session/new tra them {configOptions: [{id,name,category,type,currentValue,options}]}
- *   session/set_config_option nhan {sessionId, configId, value} -> {} (200 rong)
+ *   session/set_config_option nhan {sessionId, configId, value} -> {configOptions:[...]}
+ *   (LUU Y: KHONG phai {} rong nhu ban dau doan — thieu configOptions trong
+ *   phan hoi thi Zed khong ve lai dropdown, chon xong nhin nhu khong co gi xay
+ *   ra. Bug that, tim thay 2026-08-28.)
  * ANH markdown `![]()` trong text: KHONG can xu ly rieng — Zed tu render Markdown
  * trong content block dang text, kem ca cu phap anh. Lan truoc thieu anh la do
  * MODEL tu sinh cu phap link thuong (thieu dau `!`), khong phai gioi han ky thuat.
@@ -382,21 +385,19 @@ async function xuLyPermissionAsked(acpSessionId, ev) {
   });
 }
 
-async function handleSessionNew(params) {
-  const ocSession = await ocJson('/session', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ title: params?.cwd ? `zed:${params.cwd}` : 'zed-acp-bridge' }),
-  });
-  sessionCounter += 1;
-  const acpSessionId = `zed-${sessionCounter}-${ocSession.id}`;
-  const phien = new VongDoiPhien(ocSession.id, PROVIDER_ID, MODEL_ID, AGENT_NAME);
-  sessions.set(acpSessionId, phien);
-
-  // configOptions la phan mo rong rieng cua opencode acp, khong nam trong dac ta
-  // ACP cong khai — hinh dang do truc tiep tu binary that (xem chu thich dau file).
-  // Loi goi API o day KHONG duoc lam hong ca session/new: thieu dropdown van con
-  // hon la khong tao duoc phien.
+/**
+ * Xay `configOptions` cho mot phien — dung chung cho `session/new` VA
+ * `session/set_config_option`.
+ *
+ * BAT BUOC ca hai method deu tra ve field nay: do duoc tu binary `opencode acp`
+ * that (2026-08-27) rang `session/set_config_option` KHONG tra `{}` nhu doan
+ * ban dau, ma tra `{configOptions: [...toan bo danh sach, currentValue MOI...]}`
+ * — thieu no thi Zed khong co gi de ve lai dropdown, chon xong nhin nhu khong
+ * co gi xay ra (dung bug nguoi dung bao cao ngay 2026-08-28).
+ * Loi goi API o day KHONG duoc lam hong ca luot goi: thieu dropdown van con
+ * hon la mat ca phien/mat ca lan doi.
+ */
+async function xayConfigOptions(phien) {
   const configOptions = [];
   try {
     const modelOptions = await dsModelConfigOptions();
@@ -426,13 +427,28 @@ async function handleSessionNew(params) {
   } catch (e) {
     process.stderr.write(`bridge.mjs: khong lay duoc danh sach agent (${e.message}), bo qua dropdown\n`);
   }
+  return configOptions;
+}
 
+async function handleSessionNew(params) {
+  const ocSession = await ocJson('/session', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ title: params?.cwd ? `zed:${params.cwd}` : 'zed-acp-bridge' }),
+  });
+  sessionCounter += 1;
+  const acpSessionId = `zed-${sessionCounter}-${ocSession.id}`;
+  const phien = new VongDoiPhien(ocSession.id, PROVIDER_ID, MODEL_ID, AGENT_NAME);
+  sessions.set(acpSessionId, phien);
+
+  const configOptions = await xayConfigOptions(phien);
   return { sessionId: acpSessionId, ...(configOptions.length > 0 ? { configOptions } : {}) };
 }
 
 /**
  * `session/set_config_option` — method mo rong (khong trong dac ta ACP cong
- * khai), do duoc tu `opencode acp` that: {sessionId, configId, value} -> {}.
+ * khai), do duoc tu `opencode acp` that: {sessionId, configId, value} ->
+ * {configOptions: [...]} (xem chu thich cua `xayConfigOptions`).
  */
 async function handleSetConfigOption(params) {
   const phien = sessions.get(params.sessionId);
@@ -447,7 +463,8 @@ async function handleSetConfigOption(params) {
   } else {
     throw new Error(`configId khong duoc ho tro: ${params.configId}`);
   }
-  return {};
+  const configOptions = await xayConfigOptions(phien);
+  return { ...(configOptions.length > 0 ? { configOptions } : {}) };
 }
 
 function vanBanTuPrompt(promptBlocks) {
