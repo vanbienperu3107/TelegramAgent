@@ -650,7 +650,11 @@ async function handleSessionPrompt(params) {
         agent: phien.agentName,
         parts,
       },
-      30_000,
+      // Dinh kem base64 phinh ~33%; 30s khong du cho mot tep vai MB di qua
+      // duong proxy — giong het bat dang thuc da ghi trong opencode-client.ts
+      // cua bot Telegram (timeoutMs 90_000 khi co dinh kem). Thieu dong nay la
+      // nguyen nhan "khong phan hoi gi" khi dinh kem tep lon, bao cao 2026-08-28.
+      parts.some((p) => p.type === 'file') ? 90_000 : 30_000,
     );
 
     // Chan treo vinh vien: neu opencode-server khong bao gio phat session.idle
@@ -659,6 +663,18 @@ async function handleSessionPrompt(params) {
       setTimeout(() => reject(new Error('timeout doi session.idle')), 10 * 60_000);
     });
     await Promise.race([xongLuot, hetHan]);
+  } catch (e) {
+    // KHONG de Zed "im lang hoan toan" (bao cao 2026-08-28: gui dinh kem lon,
+    // prompt_async vuot timeout, nguoi dung khong thay gi ca — sendError qua
+    // JSON-RPC co ve khong luon hien ra UI). Gui hien mot dong chu bao loi truoc
+    // khi tra ve, de nguoi dung it nhat biet co chuyen gi xay ra thay vi treo.
+    sendNotification('session/update', {
+      sessionId: params.sessionId,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: `\n\n[bridge loi: ${e.message}]\n` },
+      },
+    });
   } finally {
     phien.luong.currentHandler = null;
   }
