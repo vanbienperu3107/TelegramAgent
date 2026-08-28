@@ -93,6 +93,64 @@ function moBangTrinhDuyetMacDinh(duongDan) {
   }
 }
 
+/**
+ * Chup trang HTML thanh anh PNG bang trinh duyet headless — Agent Panel cua Zed
+ * DA render duoc anh inline (theo release notes cua Zed), trong khi khong co
+ * webview cho HTML. Vay: chup HTML da render -> nhung anh vao chat = "xem HTML
+ * trong Zed" theo cach kha thi duy nhat hien nay.
+ *
+ * Da kiem chung tay tren chinh may nay (2026-08-28): Edge --headless=new
+ * --screenshot chay dung, ra PNG render day du. Tim binary theo thu tu Edge
+ * (co san moi Windows) -> Chrome; khong co thi bo qua im lang (co ghi log).
+ * ACP_HTML_SCREENSHOT=0 de tat; mac dinh BAT vi day la tinh nang duoc yeu cau
+ * truc tiep va khong mo cua so nao (headless).
+ */
+const CHUP_HTML = process.env.ACP_HTML_SCREENSHOT !== '0';
+const KICH_THUOC_CHUP = process.env.ACP_HTML_SCREENSHOT_SIZE ?? '1024,768';
+
+function timTrinhDuyetHeadless() {
+  const ungVien = process.platform === 'win32' ? [
+    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+    'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+    'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+  ] : process.platform === 'darwin' ? [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  ] : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/microsoft-edge'];
+  for (const p of ungVien) {
+    if (fsSync.existsSync(p)) return p;
+  }
+  return null;
+}
+
+/** Chup `duongDanHtml` -> PNG canh ben, tra ve duong dan PNG hoac null. */
+function chupHtmlThanhPng(duongDanHtml) {
+  return new Promise((resolve) => {
+    const trinhDuyet = timTrinhDuyetHeadless();
+    if (!trinhDuyet) {
+      ghiLog('bridge.mjs: khong tim thay Edge/Chrome de chup HTML, bo qua screenshot\n');
+      return resolve(null);
+    }
+    const duongDanPng = duongDanHtml.replace(/\.html?$/i, '') + '.png';
+    const urlFile = `file:///${duongDanHtml.replace(/\\/g, '/')}`;
+    const p = spawn(trinhDuyet, [
+      '--headless=new', '--disable-gpu', `--screenshot=${duongDanPng}`,
+      `--window-size=${KICH_THUOC_CHUP}`, urlFile,
+    ], { stdio: 'ignore', windowsHide: true });
+    const timer = setTimeout(() => { p.kill(); resolve(null); }, 20_000);
+    p.on('exit', () => {
+      clearTimeout(timer);
+      resolve(fsSync.existsSync(duongDanPng) ? duongDanPng : null);
+    });
+    p.on('error', (e) => {
+      clearTimeout(timer);
+      ghiLog(`bridge.mjs: chup HTML that bai: ${e.message}\n`);
+      resolve(null);
+    });
+  });
+}
+
 const OPENCODE_URL = (process.env.OPENCODE_URL ?? '').replace(/\/+$/, '');
 const OPENCODE_SERVER_PASSWORD = process.env.OPENCODE_SERVER_PASSWORD ?? '';
 const PROVIDER_ID = process.env.OPENCODE_PROVIDER_ID ?? 'cliproxy';
@@ -808,6 +866,19 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
             ghiLog(`bridge.mjs: khong ghi duoc tep tai ve cuc bo cho "${duongDan}": ${e2.message}\n`);
           }
 
+          // Neu la HTML: chup PNG bang trinh duyet headless de nhung vao chat —
+          // Agent Panel render duoc anh inline, con HTML thi khong (xem chu thich
+          // cua chupHtmlThanhPng). Nguoi dung THAY giao dien da render ngay trong
+          // Zed thay vi chi ma nguon.
+          let dongAnh = '';
+          if (CHUP_HTML && duongDanLocal && /\.html?$/i.test(duongDanLocal)) {
+            const png = await chupHtmlThanhPng(duongDanLocal);
+            if (png) {
+              const urlAnh = `file:///${png.replace(/\\/g, '/')}`;
+              dongAnh = `\n![preview](${urlAnh})\n`;
+            }
+          }
+
           // GUI THEM qua agent_message_chunk (bong bong chat thuong) — khong chi
           // dua vao content cua tool_call. `kind:'edit'` co the co UI rieng trong
           // Zed (uu tien khoi diff, khong phai text thuong) va tu hien mot dong co
@@ -818,7 +889,7 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
             sessionId: acpSessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
-              content: { type: 'text', text: `\n\n--- ${duongDan} ---${dongTaiVe}\n\`\`\`\n${fc.content}\n\`\`\`\n` },
+              content: { type: 'text', text: `\n\n--- ${duongDan} ---${dongTaiVe}${dongAnh}\n\`\`\`\n${fc.content}\n\`\`\`\n` },
             },
           });
         } else {
