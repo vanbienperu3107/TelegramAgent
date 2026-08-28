@@ -702,7 +702,23 @@ const TOOL_ACP_KIND = { bash: 'execute', read: 'read', write: 'edit', edit: 'edi
  * `docs/opencode-events-sample.jsonl`. Hinh dang ACP tool_call/tool_call_update
  * do truc tiep tu binary `opencode acp` that (2026-08-27) — xem chu thich dau file.
  */
-function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
+/**
+ * Cac tool GHI file — GET /file/content sau khi hoan tat de gan noi dung THAT
+ * vao tool_call, vi workspace nam TREN VPN4, khong phai may Zed. Khong co buoc
+ * nay thi "tao file xong" chi la 1 dong text, nguoi dung khong co cach nao lay
+ * duoc noi dung — dung van de bao cao 2026-08-28 (giong ly do bot Telegram co
+ * rieng tep-ket-qua.ts).
+ */
+const TOOL_GHI_FILE = new Set(['write', 'edit', 'patch']);
+
+/**
+ * `message.part.updated` voi `part.type === 'tool'` -> `tool_call`/`tool_call_update`.
+ *
+ * Hinh dang `part.state` (pending/running/completed) do truc tiep tu
+ * `docs/opencode-events-sample.jsonl`. Hinh dang ACP tool_call/tool_call_update
+ * do truc tiep tu binary `opencode acp` that (2026-08-27) — xem chu thich dau file.
+ */
+async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
   const toolCallId = part.callID;
   const trangThai = part.state?.status;
   const status = trangThai === 'completed' ? 'completed'
@@ -723,6 +739,25 @@ function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
       update.content = [{ type: 'content', content: { type: 'text', text: output } }];
     }
     if (part.state?.metadata) update.rawOutput = part.state.metadata;
+  }
+  if (status === 'completed' && TOOL_GHI_FILE.has(part.tool)) {
+    // Chua do duoc CHAC CHAN ten truong dung tren input cua write/edit (mau
+    // 111 su kien chi co bash) — thu ca hai ten pho bien nhat, khong doan bua
+    // hon (khong co thi bo qua, khong lam hong ca tool_call).
+    const duongDan = part.state?.input?.filePath ?? part.state?.input?.path;
+    if (typeof duongDan === 'string' && duongDan.length > 0) {
+      try {
+        const fc = await ocJson(`/file/content?path=${encodeURIComponent(duongDan)}`);
+        if (fc?.type === 'text' && typeof fc.content === 'string') {
+          update.content = [
+            ...(update.content ?? []),
+            { type: 'content', content: { type: 'text', text: `--- ${duongDan} ---\n${fc.content}` } },
+          ];
+        }
+      } catch (e) {
+        ghiLog(`bridge.mjs: khong doc lai duoc noi dung tep "${duongDan}" sau khi ghi (${e.message})\n`);
+      }
+    }
   }
   daGuiLanDau.add(toolCallId);
   sendNotification('session/update', { sessionId: acpSessionId, update });
@@ -782,7 +817,7 @@ async function handleSessionPrompt(params) {
       if (ev.type === 'message.part.updated') {
         const part = ev.properties?.part;
         if (part?.type === 'tool' && part?.callID) {
-          guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
+          await guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
         }
       }
     },
@@ -861,7 +896,7 @@ async function handleSessionLoad(params) {
           },
         });
       } else if (part.type === 'tool' && part.callID) {
-        guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
+        await guiToolCallUpdate(params.sessionId, part, toolCallDaGui);
       }
     }
   }
