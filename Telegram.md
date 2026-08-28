@@ -202,7 +202,10 @@ treo ở "Thinking". Cấu hình hiện tại đã tắt (`commercial-mode: true
 
 ## 0.6 Ràng buộc bắt buộc (rút từ sự cố đã xảy ra trên chính hạ tầng này)
 
-1. **Mọi service mới phải có `mem_limit`.** Tổng ngân sách cho stack này ≤ 900 MB (§37.1).
+1. **Mọi service mới phải có `mem_limit`.** Tổng ngân sách cho stack này ≤ 1220 MB (nâng từ
+   900 MB ngày 2026-08-28 sau khi opencode-server 576m bị kernel OOM-kill thật, xem
+   `tests/test_compose.py::test_tong_ngan_sach_ram_khong_vuot_1220mb` — tạm, chờ nâng RAM vật
+   lý vpn4, hiện chỉ có 1968 MB tổng).
 2. **Mọi service mới phải có `logging: json-file, max-size 10m, max-file 3`.** Trên vpn6
    `derp-backend` từng phình 2.5 GB log, đọc log lớn làm nghẽn Postgres và dashboard trả 500.
    vpn4 không có `daemon.json` nên phải khai báo ở từng service.
