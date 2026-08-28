@@ -775,10 +775,17 @@ async function handleSessionCancel(params) {
 
 async function handleRequest(msg) {
   const { id, method, params } = msg;
+  // ghiLog TRUOC DAY chi ghi khi co loi — mot luot dang chay binh thuong (dai,
+  // hoac cho session.idle lau) thi bridge.log rong trong suot qua trinh, khong
+  // phan biet duoc "dang chay" voi "treo that". Ghi ca luc bat dau/ket thuc MOI
+  // request de doc log biet ngay dang cho o buoc nao — bao cao 2026-08-28.
+  const batDau = Date.now();
+  ghiLog(`bridge.mjs: >>> ${method} (id=${id}) sessionId=${params?.sessionId ?? '-'}\n`);
   try {
+    let result;
     switch (method) {
       case 'initialize':
-        sendResult(id, {
+        result = {
           protocolVersion: params?.protocolVersion ?? 1,
           // image: true vi Zed tu render Markdown (ke ca cu phap anh) trong content
           // block text — khong can bridge tu tach thanh block anh rieng. audio/embeddedContext
@@ -789,31 +796,36 @@ async function handleRequest(msg) {
           // hoi lai gi them. Ke ca vay, Zed van co the tu goi 'authenticate' cho
           // MOI custom agent (thay vi chi khi co authMethods) — xu ly ben duoi de
           // khong chan nguoi dung o man hinh "Authenticate to ...".
-        });
-        return;
+        };
+        break;
       case 'authenticate':
-        sendResult(id, {});
-        return;
+        result = {};
+        break;
       case 'session/new':
-        sendResult(id, await handleSessionNew(params));
-        return;
+        result = await handleSessionNew(params);
+        break;
       case 'session/load':
-        sendResult(id, await handleSessionLoad(params));
-        return;
+        result = await handleSessionLoad(params);
+        break;
       case 'session/prompt':
-        sendResult(id, await handleSessionPrompt(params));
-        return;
+        result = await handleSessionPrompt(params);
+        break;
       case 'session/cancel':
-        sendResult(id, await handleSessionCancel(params));
-        return;
+        result = await handleSessionCancel(params);
+        break;
       case 'session/set_config_option':
-        sendResult(id, await handleSetConfigOption(params));
-        return;
+        result = await handleSetConfigOption(params);
+        break;
       default:
         sendError(id, -32601, `method khong duoc ho tro: ${method}`);
+        ghiLog(`bridge.mjs: <<< ${method} (id=${id}) method khong ho tro, ${Date.now() - batDau}ms\n`);
+        return;
     }
+    sendResult(id, result);
+    ghiLog(`bridge.mjs: <<< ${method} (id=${id}) OK, ${Date.now() - batDau}ms\n`);
   } catch (e) {
     sendError(id, -32000, e?.message ?? String(e));
+    ghiLog(`bridge.mjs: <<< ${method} (id=${id}) LOI: ${e?.message ?? e}, ${Date.now() - batDau}ms\n`);
   }
 }
 
