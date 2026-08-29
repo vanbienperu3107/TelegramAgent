@@ -912,6 +912,10 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
                     }],
                   },
                 });
+                // Log BAT BUOC de phan biet "code moi chua chay" voi "da gui ma
+                // Zed khong ve" — hai truong hop nay nhin tu UI giong het nhau,
+                // va da mat nhieu vong thu-sai vi khong phan biet duoc.
+                ghiLog(`bridge.mjs: DA GUI tool_call preview "${toolCallId}-preview", anh ${anhBase64.length} ky tu base64\n`);
               } catch (e) {
                 ghiLog(`bridge.mjs: khong doc duoc PNG da chup "${png}": ${e.message}\n`);
               }

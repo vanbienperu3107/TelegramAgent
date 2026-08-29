@@ -115,13 +115,17 @@ Kỳ vọng nhận lại một dòng `{"jsonrpc":"2.0","id":1,"result":{...}}`.
 
 ## Xem log khi Zed "im lặng"/treo (2026-08-28)
 
-**Zed KHÔNG ghi lại `stderr` của bridge vào `Zed.log`** — đã xác nhận bằng cách
-đọc trực tiếp file log thật (`%LOCALAPPDATA%\Zed\logs\Zed.log` trên Windows),
-chỉ thấy lỗi cấp Zed (`acp_thread Error in run turn`, hang detection UI), không
-có dòng nào của bridge. Vì vậy bridge tự ghi log ra file riêng, mặc định
-`bridge.log` **cùng thư mục** với `bridge.mjs` (đổi qua biến môi trường
-`ACP_BRIDGE_LOG_PATH` nếu muốn nơi khác). Khi Zed báo lỗi hoặc im lặng không rõ
-lý do, mở file này lên xem dòng cuối cùng trước khi báo cáo.
+Có **hai** nơi đọc log, dùng cả hai khi chẩn đoán:
+
+1. `bridge.log` — bridge tự ghi, mặc định **cùng thư mục** với `bridge.mjs`
+   (đổi qua `ACP_BRIDGE_LOG_PATH`). Đây là nguồn chính.
+2. `%LOCALAPPDATA%\Zed\logs\Zed.log` — Zed **có** ghi lại `stderr` của bridge,
+   dạng `WARN [agent_servers::acp] agent stderr: ...`.
+   **Đính chính (2026-08-29):** phần này trước đây ghi nhầm là "Zed KHÔNG ghi
+   stderr của bridge" — sai, do lần kiểm tra đầu chỉ nhìn phần cuối file lúc
+   chưa có dòng nào của bridge. Zed.log còn có thêm lỗi cấp Zed
+   (`acp_thread Error in run turn`) mà `bridge.log` không thấy được, nên vẫn
+   phải đọc cả hai.
 
 **Cập nhật 2026-08-28:** ban đầu chỉ ghi log khi có lỗi — một lượt đang chạy
 bình thường (dù chậm) thì file vẫn trống suốt, không phân biệt được "đang chạy"
