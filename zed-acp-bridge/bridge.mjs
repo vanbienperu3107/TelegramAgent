@@ -38,6 +38,7 @@ import { Buffer } from 'node:buffer';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +70,55 @@ function ghiLog(msg) {
   const dong = `[${new Date().toISOString()}] ${msg}`;
   process.stderr.write(dong);
   logStream?.write(dong);
+}
+
+// ---------------------------------------------------------------------------
+// HTTP server mini phuc vu DOWNLOAD_DIR tren localhost.
+//
+// Ly do ton tai (2026-08-29, sau 5 lan thu that bai voi cac duong khac):
+//   - Markdown ![](file:///...) : Zed khong load anh tu file:// (thu that).
+//   - agent_message_chunk {type:'image'}: Zed doi thanh placeholder "Image"
+//     khi block da co text (doc tu ma nguon + thu that).
+//   - resource blob trong tool_call (ke ca tool_call preview rieng): bridge
+//     DA GUI (log xac nhan 387KB base64) nhung Zed am tham khong ve.
+// Link http:// trong Markdown thi CHAC CHAN click duoc trong Zed (mo trinh
+// duyet) — giai quyet "tai file" + "xem HTML render" cung mot cu click. Anh
+// ![](http://127.0.0.1:...) cung co co hoi render cao hon file://.
+//
+// An toan: chi bind 127.0.0.1, chi phuc vu file NGAY TRONG DOWNLOAD_DIR
+// (path.basename chan traversal), chi GET.
+// ---------------------------------------------------------------------------
+const HTTP_PORT_CONF = Number(process.env.ACP_BRIDGE_HTTP_PORT ?? 0); // 0 = tu chon cong trong
+let httpPort = null;
+
+const MIME_HTTP = {
+  '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.svg': 'image/svg+xml', '.md': 'text/markdown; charset=utf-8', '.json': 'application/json',
+  '.css': 'text/css', '.js': 'text/javascript', '.txt': 'text/plain; charset=utf-8',
+  '.pdf': 'application/pdf',
+};
+
+const mayChuTaiVe = http.createServer((req, res) => {
+  if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
+  const ten = path.basename(decodeURIComponent((req.url ?? '/').split('?')[0]));
+  const duongDan = path.join(DOWNLOAD_DIR, ten);
+  fsSync.readFile(duongDan, (err, data) => {
+    if (err) { res.writeHead(404); return res.end('not found'); }
+    const mime = MIME_HTTP[path.extname(ten).toLowerCase()] ?? 'application/octet-stream';
+    res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-cache' });
+    res.end(data);
+  });
+});
+mayChuTaiVe.on('error', (e) => ghiLog(`bridge.mjs: HTTP server loi: ${e.message}\n`));
+mayChuTaiVe.listen(HTTP_PORT_CONF, '127.0.0.1', () => {
+  httpPort = mayChuTaiVe.address()?.port ?? null;
+  ghiLog(`bridge.mjs: HTTP server phuc vu downloads tai http://127.0.0.1:${httpPort}/\n`);
+});
+
+function urlTaiVe(duongDanLocal) {
+  if (!httpPort || !duongDanLocal) return null;
+  return `http://127.0.0.1:${httpPort}/${encodeURIComponent(path.basename(duongDanLocal))}`;
 }
 
 /**
@@ -886,39 +936,18 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
           // kind 'read', khong phai 'edit') chi chua dung 1 content la anh —
           // Zed ve tool call thuong co content, va decode_embedded_resource_image
           // (doc tu ma nguon that) se render anh that ben trong khoi do.
+          // CAP NHAT 2026-08-29 (lan thu 6, sau khi log xac nhan tool_call
+          // preview DA GUI 387KB base64 ma Zed van am tham khong ve): bo han
+          // duong tool_call, chuyen sang HTTP localhost — xem chu thich cua
+          // mayChuTaiVe o dau file. Link http:// trong Markdown chac chan click
+          // duoc trong Zed; click vao file .html la trinh duyet mo BAN RENDER
+          // DAY DU (giai quyet ca "tai file" lan "xem HTML" cung mot cu click).
+          let dongAnhHttp = '';
           if (CHUP_HTML && duongDanLocal && /\.html?$/i.test(duongDanLocal)) {
             const png = await chupHtmlThanhPng(duongDanLocal);
-            if (png) {
-              try {
-                const anhBase64 = (await fs.readFile(png)).toString('base64');
-                sendNotification('session/update', {
-                  sessionId: acpSessionId,
-                  update: {
-                    sessionUpdate: 'tool_call',
-                    toolCallId: `${toolCallId}-preview`,
-                    status: 'completed',
-                    kind: 'read',
-                    title: `Preview: ${path.basename(duongDanLocal)}`,
-                    content: [{
-                      type: 'content',
-                      content: {
-                        type: 'resource',
-                        resource: {
-                          uri: encodeURI(`file:///${png.replace(/\\/g, '/')}`),
-                          mimeType: 'image/png',
-                          blob: anhBase64,
-                        },
-                      },
-                    }],
-                  },
-                });
-                // Log BAT BUOC de phan biet "code moi chua chay" voi "da gui ma
-                // Zed khong ve" — hai truong hop nay nhin tu UI giong het nhau,
-                // va da mat nhieu vong thu-sai vi khong phan biet duoc.
-                ghiLog(`bridge.mjs: DA GUI tool_call preview "${toolCallId}-preview", anh ${anhBase64.length} ky tu base64\n`);
-              } catch (e) {
-                ghiLog(`bridge.mjs: khong doc duoc PNG da chup "${png}": ${e.message}\n`);
-              }
+            const urlPng = png ? urlTaiVe(png) : null;
+            if (urlPng) {
+              dongAnhHttp = `\n![preview](${urlPng})\n`;
             }
           }
 
@@ -927,12 +956,15 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
           // Zed (uu tien khoi diff, khong phai text thuong) va tu hien mot dong co
           // dinh kieu "Wrote file successfully" bo qua noi dung ta gui, dung nhu
           // bao cao 2026-08-28: content da gui nhung nguoi dung khong thay gi.
-          const dongTaiVe = duongDanLocal ? `\n📁 Đã tải về máy bạn: ${duongDanLocal}\n` : '';
+          const urlFile = urlTaiVe(duongDanLocal);
+          const dongTaiVe = duongDanLocal
+            ? `\n📁 Đã lưu: ${duongDanLocal}\n${urlFile ? `🔗 **[Bấm để mở/tải](${urlFile})**\n` : ''}`
+            : '';
           sendNotification('session/update', {
             sessionId: acpSessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
-              content: { type: 'text', text: `\n\n--- ${duongDan} ---${dongTaiVe}\n\`\`\`\n${fc.content}\n\`\`\`\n` },
+              content: { type: 'text', text: `\n\n--- ${duongDan} ---${dongTaiVe}${dongAnhHttp}\n\`\`\`\n${fc.content}\n\`\`\`\n` },
             },
           });
         } else {
