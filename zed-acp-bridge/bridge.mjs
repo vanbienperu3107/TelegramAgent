@@ -885,10 +885,16 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
     if (part.state?.metadata) update.rawOutput = part.state.metadata;
   }
   if (status === 'completed' && TOOL_GHI_FILE.has(part.tool)) {
-    // Chua do duoc CHAC CHAN ten truong dung tren input cua write/edit (mau
-    // 111 su kien chi co bash) — thu ca hai ten pho bien nhat, khong doan bua
-    // hon (khong co thi bo qua, khong lam hong ca tool_call).
+    // filePath da xac nhan la ten truong that qua diag-session.yml (2026-08-28);
+    // giu them `path` du phong.
     const duongDan = part.state?.input?.filePath ?? part.state?.input?.path;
+    if (typeof duongDan !== 'string' || duongDan.length === 0) {
+      // Bao cao 2026-08-29: "tao file .md khong thay link tai" — mot kha nang
+      // la model tao file bang tool BASH (echo/cat > file) thay vi write/edit,
+      // khi do khong co filePath nao de bat. Log ro de phan biet voi truong
+      // hop write chay ma input doi ten truong.
+      ghiLog(`bridge.mjs: tool "${part.tool}" completed nhung khong tim thay filePath/path trong input: ${JSON.stringify(part.state?.input ?? {}).slice(0, 200)}\n`);
+    }
     if (typeof duongDan === 'string' && duongDan.length > 0) {
       try {
         const fc = await ocJson(`/file/content?path=${encodeURIComponent(duongDan)}`);
@@ -916,46 +922,16 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
             ghiLog(`bridge.mjs: khong ghi duoc tep tai ve cuc bo cho "${duongDan}": ${e2.message}\n`);
           }
 
-          // Neu la HTML: chup PNG bang trinh duyet headless roi nhet vao CONTENT
-          // CUA TOOL_CALL duoi dang ContentBlock::Resource nhung anh (blob base64).
+          // 2026-08-29: BO tinh nang nhung anh preview theo yeu cau nguoi dung
+          // ("render nhin xau qua") — chi giu link http de bam mo/tai. Click
+          // link .html la trinh duyet mo ban render that, dep va tuong tac
+          // duoc, tot hon moi ban chup. Lich su 6 lan thu nhung anh vao chat
+          // (Markdown file://, image chunk, resource blob trong tool_call...)
+          // nam trong git history cua file nay neu can tra lai.
           //
-          // Ly do chon duong nay — DOC TU MA NGUON THAT cua Zed
-          // (crates/acp_thread/src/acp_thread.rs, 2026-08-28):
-          //   - anh trong agent_message_chunk: chi render neu la block MOI hoan
-          //     toan; da co text truoc do (dung ca cua ta) thi bi doi thanh chu
-          //     placeholder "Image" — vo dung. Da thu that va dung la khong hien.
-          //   - anh trong tool_call content: `new_tool_call_content` goi
-          //     `decode_embedded_resource_image` -> render ANH THAT.
-          // Truoc do con thu Markdown ![](file:///...) ke ca sau encodeURI —
-          // cung khong render (Agent Panel khong load anh tu file://).
-          // CAP NHAT 2026-08-28 (lan thu 4): nhet anh vao content cua CHINH
-          // tool_call write cung khong hien — de y rang CA text lan anh nhet vao
-          // do deu chua bao gio hien thi ("Wrote file successfully" co dinh),
-          // tuc Zed ve tool kind 'edit' bang UI diff rieng, bo qua toan bo
-          // `content`. Giai phap: phat mot TOOL_CALL RIENG (id `-preview`,
-          // kind 'read', khong phai 'edit') chi chua dung 1 content la anh —
-          // Zed ve tool call thuong co content, va decode_embedded_resource_image
-          // (doc tu ma nguon that) se render anh that ben trong khoi do.
-          // CAP NHAT 2026-08-29 (lan thu 6, sau khi log xac nhan tool_call
-          // preview DA GUI 387KB base64 ma Zed van am tham khong ve): bo han
-          // duong tool_call, chuyen sang HTTP localhost — xem chu thich cua
-          // mayChuTaiVe o dau file. Link http:// trong Markdown chac chan click
-          // duoc trong Zed; click vao file .html la trinh duyet mo BAN RENDER
-          // DAY DU (giai quyet ca "tai file" lan "xem HTML" cung mot cu click).
-          let dongAnhHttp = '';
-          if (CHUP_HTML && duongDanLocal && /\.html?$/i.test(duongDanLocal)) {
-            const png = await chupHtmlThanhPng(duongDanLocal);
-            const urlPng = png ? urlTaiVe(png) : null;
-            if (urlPng) {
-              dongAnhHttp = `\n![preview](${urlPng})\n`;
-            }
-          }
-
-          // GUI THEM qua agent_message_chunk (bong bong chat thuong) — khong chi
-          // dua vao content cua tool_call. `kind:'edit'` co the co UI rieng trong
-          // Zed (uu tien khoi diff, khong phai text thuong) va tu hien mot dong co
-          // dinh kieu "Wrote file successfully" bo qua noi dung ta gui, dung nhu
-          // bao cao 2026-08-28: content da gui nhung nguoi dung khong thay gi.
+          // GUI qua agent_message_chunk (bong bong chat thuong) — khong dua vao
+          // content cua tool_call vi Zed ve tool kind 'edit' bang UI diff rieng,
+          // bo qua toan bo content (kiem chung 2026-08-28).
           const urlFile = urlTaiVe(duongDanLocal);
           const dongTaiVe = duongDanLocal
             ? `\n📁 Đã lưu: ${duongDanLocal}\n${urlFile ? `🔗 **[Bấm để mở/tải](${urlFile})**\n` : ''}`
@@ -964,7 +940,7 @@ async function guiToolCallUpdate(acpSessionId, part, daGuiLanDau) {
             sessionId: acpSessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
-              content: { type: 'text', text: `\n\n--- ${duongDan} ---${dongTaiVe}${dongAnhHttp}\n\`\`\`\n${fc.content}\n\`\`\`\n` },
+              content: { type: 'text', text: `\n\n--- ${duongDan} ---${dongTaiVe}\n\`\`\`\n${fc.content}\n\`\`\`\n` },
             },
           });
         } else {
