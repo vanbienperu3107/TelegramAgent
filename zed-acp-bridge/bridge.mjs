@@ -99,13 +99,83 @@ const MIME_HTTP = {
   '.pdf': 'application/pdf',
 };
 
+function thoatHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Markdown -> HTML toi gian, du dung cho file .md model sinh ra (heading, dam,
+ * nghieng, code inline/khoi, danh sach, link, bang, gach ngang). Tu viet ~60
+ * dong thay vi keo them dependency: bridge chi co 1 dep (undici, cho proxy) va
+ * muon giu nguyen nhu vay. Truong hop la khong parse duoc thi van con link
+ * "?raw=1" tai ban goc.
+ */
+function mdSangHtml(md) {
+  const khoiMa = [];
+  let s = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, _lang, than) => {
+    khoiMa.push(`<pre><code>${thoatHtml(than.replace(/\n$/, ''))}</code></pre>`);
+    return `@@KHOI-MA@@KHOI${khoiMa.length - 1}@@KHOI-MA@@`;
+  });
+  s = thoatHtml(s);
+  s = s.replace(/`([^`\n]+)`/g, (_m, t) => `<code>${t}</code>`);
+  s = s.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>').replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>')
+    .replace(/^####\s+(.+)$/gm, '<h4>$1</h4>').replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
+    .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>').replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+  s = s.replace(/^\s*[-*_]{3,}\s*$/gm, '<hr>');
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*\w])\*([^*\n]+)\*(?![\w*])/g, '$1<i>$2</i>');
+  s = s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
+  // Bang Markdown don gian: nhom cac dong lien tiep bat dau bang |
+  s = s.replace(/((?:^\|.*\|\s*$\n?)+)/gm, (khoi) => {
+    const dong = khoi.trim().split('\n').filter((d) => !/^\|[\s:|-]+\|$/.test(d.trim()));
+    const hang = dong.map((d, i) => {
+      const o = d.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+      const the = i === 0 ? 'th' : 'td';
+      return `<tr>${o.map((c) => `<${the}>${c}</${the}>`).join('')}</tr>`;
+    });
+    return `<table>${hang.join('')}</table>\n`;
+  });
+  // Danh sach: nhom dong lien tiep bat dau bang - hoac * hoac so.
+  s = s.replace(/((?:^\s*[-*]\s+.+$\n?)+)/gm, (khoi) =>
+    `<ul>${khoi.trim().split('\n').map((d) => `<li>${d.replace(/^\s*[-*]\s+/, '')}</li>`).join('')}</ul>\n`);
+  s = s.replace(/((?:^\s*\d+\.\s+.+$\n?)+)/gm, (khoi) =>
+    `<ol>${khoi.trim().split('\n').map((d) => `<li>${d.replace(/^\s*\d+\.\s+/, '')}</li>`).join('')}</ol>\n`);
+  // Doan van: dong trong ngan cach; dong don le trong doan giu xuong dong mem.
+  s = s.split(/\n{2,}/).map((doan) => {
+    const t = doan.trim();
+    if (!t) return '';
+    if (/^<(h\d|ul|ol|table|pre|hr)/.test(t) || /@@KHOI-MA@@KHOI\d+@@KHOI-MA@@/.test(t)) return t;
+    return `<p>${t.replace(/\n/g, '<br>')}</p>`;
+  }).join('\n');
+  s = s.replace(/@@KHOI-MA@@KHOI(\d+)@@KHOI-MA@@/g, (_m, i) => khoiMa[Number(i)] ?? '');
+  return s;
+}
+
+const CSS_MD = `body{max-width:860px;margin:2rem auto;padding:0 1rem;font-family:system-ui,sans-serif;line-height:1.6;color:#1a1a1a}
+pre{background:#f4f4f4;padding:1rem;border-radius:6px;overflow-x:auto}code{background:#f4f4f4;padding:.1em .35em;border-radius:4px;font-size:.92em}
+pre code{padding:0;background:none}table{border-collapse:collapse;margin:1em 0}th,td{border:1px solid #ccc;padding:.4em .8em}th{background:#f0f0f0}
+h1,h2{border-bottom:1px solid #eee;padding-bottom:.3em}a{color:#0b62c4}
+.thanh{background:#eef;border:1px solid #cce;border-radius:6px;padding:.5em .8em;margin-bottom:1.2em;font-size:.9em}`;
+
 const mayChuTaiVe = http.createServer((req, res) => {
   if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
-  const ten = path.basename(decodeURIComponent((req.url ?? '/').split('?')[0]));
+  const [duongUrl, query] = (req.url ?? '/').split('?');
+  const ten = path.basename(decodeURIComponent(duongUrl));
   const duongDan = path.join(DOWNLOAD_DIR, ten);
+  const raw = (query ?? '').includes('raw=1');
   fsSync.readFile(duongDan, (err, data) => {
     if (err) { res.writeHead(404); return res.end('not found'); }
-    const mime = MIME_HTTP[path.extname(ten).toLowerCase()] ?? 'application/octet-stream';
+    const duoi = path.extname(ten).toLowerCase();
+    // .md: mac dinh tra trang HTML DA RENDER (yeu cau 2026-08-29 "nut open
+    // view cho .md") — trinh duyet mo ra doc duoc ngay thay vi tai file text
+    // tho. ?raw=1 de lay ban goc.
+    if (duoi === '.md' && !raw) {
+      const than = mdSangHtml(data.toString('utf8'));
+      const trang = `<!doctype html><meta charset="utf-8"><title>${thoatHtml(ten)}</title><style>${CSS_MD}</style>`
+        + `<div class="thanh">📄 ${thoatHtml(ten)} — <a href="?raw=1" download>tải file .md gốc</a></div>${than}`;
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+      return res.end(trang);
+    }
+    const mime = MIME_HTTP[duoi] ?? 'application/octet-stream';
     res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-cache' });
     res.end(data);
   });
