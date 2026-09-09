@@ -78,7 +78,13 @@ jobs:
             python3 -m json.tool opencode.json > /dev/null || (install -m 644 opencode.json.bak opencode.json; false)
             docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "$OC_IMAGE" node /opt/verify-opencode-config.cjs || (install -m 644 opencode.json.bak opencode.json; false)
             SAU=$(md5sum opencode.json | cut -d' ' -f1)
-            test "$TRUOC" = "$SAU" || docker compose up -d --force-recreate opencode-server
+            # `docker restart` chu KHONG `docker compose up`: compose noi suy CA
+            # tep compose truoc khi lam gi, nen no doi du TUNNEL_TAG/OPENCODE_TAG
+            # — nhung nhung bien do chi ton tai trong .env do gen-env.py cua
+            # deploy.yml sinh ra tu repo variable. Lan chay dau tien cua workflow
+            # nay chet dung o do: "required variable TUNNEL_TAG is missing".
+            # Config duoc mount ro tu dia, nen restart la du de OpenCode doc lai.
+            test "$TRUOC" = "$SAU" || docker restart opencode-server
             test "$TRUOC" = "$SAU" && echo "KHONG DOI: danh sach model giu nguyen" || echo "DA DOI: nap lai opencode-server"
         env:
           DEPLOY_PATH: /opt/opencode
