@@ -1,0 +1,112 @@
+name: Dong bo danh sach model tu CLIProxy
+
+# VI SAO CO FILE NAY
+#
+# `opencode.json` tren vpn4 khai CUNG khoi provider.cliproxy.models. OpenCode
+# KHONG hoi /v1/models luc chay — no chi doc khoi do. Khoi do duoc sinh boi
+# scripts/sync-models.cjs, va truoc day sync-models CHI chay trong deploy.yml.
+#
+# Hau qua do duoc ngay 2026-09-09: `opencode.json` sinh ngay 2026-08-29 con
+# `gpt-5.4`; sau do OpenAI rut model do khoi catalog Codex, CLIProxy thoi phuc vu
+# no, nhung OpenCode khong deploy lai lan nao nen danh sach dong bang 11 ngay.
+# Nguoi dung chon `gpt-5.4` va nhan 400 "unknown provider for model gpt-5.4".
+#
+# Goc re la HAI NHIP DO LECH NHAU: CLIProxy tu nang cap hang tuan bang
+# autoupdate-cliproxy.yml o repo deployHeadscale, con danh sach model ben nay chi
+# doi khi co nguoi bam deploy. Cron nay lam nhip thu hai duoi len, khong cham vao
+# repo kia (nen khong can PAT cross-repo).
+#
+# KHONG deploy lai stack: chi chay dung sync-models roi nap lai opencode-server
+# NEU file that su doi. Xem buoc 2.
+on:
+  schedule:
+    # 08:00 UTC = ~03:00 gio Peru. Co y chon dem ben Peru: buoc nap lai
+    # opencode-server giet moi phien dang chay, va nguoi dung o Peru.
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+# Cung host vpn4 voi deploy.yml cua repo nay va deploy-* cua deployHeadscale.
+# concurrency chi chan trong MOT repo; `flock` tren vpn4 moi la thu chan that.
+concurrency:
+  group: deploy-vpn4-host
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      # ─── Buoc 1: chay sync-models tren vpn4 ─────────────────────────────────
+      #
+      # Anh dung de chay sync-models lay tu CHINH container dang chay, khong tu
+      # github.sha: cron chay tren main, va tag `github.sha` cua main chi ton tai
+      # tren GHCR neu commit do da qua build-images.yml. Lay anh dang chay thi
+      # luon co that, va dung ban ma stack nay thuc su dang dung.
+      - name: vpn4 - dong bo model
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST_VPN4 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script_stop: true
+          command_timeout: 20m
+          envs: DEPLOY_PATH,CLIPROXY_API_KEY
+          script: |
+            set -x
+            exec 9>/var/lock/vpn4-deploy
+            flock -w 600 9 || exit 1
+            cd /opt/opencode
+            test -f opencode.json.template
+            test -f scripts/sync-models.cjs
+            test -f scripts/readenv.py
+            GW_IMAGE=$(docker inspect -f '{{.Config.Image}}' opencode-gateway)
+            OC_IMAGE=$(docker inspect -f '{{.Config.Image}}' opencode-server)
+            test -n "$GW_IMAGE"
+            test -n "$OC_IMAGE"
+            CLIPROXY_BASE_URL=$(python3 scripts/readenv.py .env CLIPROXY_BASE_URL)
+            export CLIPROXY_BASE_URL
+            test -n "$CLIPROXY_BASE_URL"
+            install -m 644 opencode.json opencode.json.bak
+            TRUOC=$(md5sum opencode.json | cut -d' ' -f1)
+            install -d -m 755 docs
+            chown 1000:1000 opencode.json docs
+            docker run --rm --network edge -e CLIPROXY_BASE_URL -e CLIPROXY_API_KEY -v /opt/opencode/opencode.json.template:/app/opencode.json.template:ro -v /opt/opencode/opencode.json:/app/opencode.json -v /opt/opencode/docs:/app/docs -w /app --entrypoint node "$GW_IMAGE" scripts/sync-models.cjs
+            chmod 644 opencode.json
+            python3 -m json.tool opencode.json > /dev/null || (install -m 644 opencode.json.bak opencode.json; false)
+            docker run --rm -v /opt/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro "$OC_IMAGE" node /opt/verify-opencode-config.cjs || (install -m 644 opencode.json.bak opencode.json; false)
+            SAU=$(md5sum opencode.json | cut -d' ' -f1)
+            test "$TRUOC" = "$SAU" || docker compose up -d --force-recreate opencode-server
+            test "$TRUOC" = "$SAU" && echo "KHONG DOI: danh sach model giu nguyen" || echo "DA DOI: nap lai opencode-server"
+        env:
+          DEPLOY_PATH: /opt/opencode
+          # `envs:` cua ssh-action CHI la bo chon ten — gia tri phai den tu khoi
+          # `env:` cua chinh step nay, neu khong thi bien rong o dau ben kia ma
+          # khong canh bao gi.
+          CLIPROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}
+
+      # ─── Buoc 2: doc lai ket qua tu may that ────────────────────────────────
+      #
+      # Step rieng = shell rieng: khong bien nao song qua tu buoc 1, phai tu `cd`
+      # va tu lay khoa lai. Doc lai tu vpn4 thay vi tin vao log buoc tren, vi cai
+      # ta can bao dam la TRANG THAI TREN DIA, khong phai lenh da chay xong.
+      - name: vpn4 - liet ke model sau dong bo
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST_VPN4 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script_stop: true
+          envs: DEPLOY_PATH
+          script: |
+            exec 9>/var/lock/vpn4-deploy
+            flock -w 600 9 || exit 1
+            cd /opt/opencode
+            docker inspect -f '{{.Config.Image}}' opencode-server
+            python3 -c "import json;print('\n'.join(sorted(json.load(open('opencode.json'))['provider']['cliproxy']['models'])))"
+            cat docs/models-unverified.md
+        env:
+          DEPLOY_PATH: /opt/opencode
