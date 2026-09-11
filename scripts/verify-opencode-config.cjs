@@ -41,7 +41,9 @@ const BASH_REQUIRED = {
   'systemctl *': 'deny',
   'docker *': 'deny',
   'kubectl *': 'deny',
-  'git push*': 'deny',
+  // allow tu 2026-09-11: nguoi dung cho agent tu push (token trong
+  // /workspace/.git-credentials, gioi han repo o phia GitHub).
+  'git push*': 'allow',
   'git reset --hard*': 'deny',
 };
 

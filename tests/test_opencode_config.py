@@ -93,8 +93,10 @@ def test_bash_map_co_du_mau_deny(template):
     bash = template["permission"]["bash"]
     assert bash["*"] == "allow"
     for pattern in ("rm *", "sudo *", "systemctl *", "docker *", "kubectl *",
-                    "git push*", "git reset --hard*"):
+                    "git reset --hard*"):
         assert bash[pattern] == "deny", "%s phai la deny" % pattern
+    # Nguoi dung cho agent tu push tu 2026-09-11.
+    assert bash["git push*"] == "allow"
 
 
 def test_provider_dung_bien_moi_truong_khong_hardcode_key(template):

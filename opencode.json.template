@@ -85,7 +85,7 @@
       "systemctl *": "deny",
       "docker *": "deny",
       "kubectl *": "deny",
-      "git push*": "deny",
+      "git push*": "allow",
       "git reset --hard*": "deny"
     }
   },
