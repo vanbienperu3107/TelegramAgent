@@ -27,11 +27,12 @@ const VALID_KEYS = [
   'question', 'webfetch', 'websearch', 'external_directory', 'doom_loop',
 ];
 
-// Map bash phai khop CHINH XAC bang nay (§27). Khong dung o "*" = ask: mot
-// regression danh roi map deny se qua duoc phep kiem, va `docker compose down
-// derper` tut tu "deny" xuong chi con mot nut bam luc 2 gio sang.
+// Map bash phai khop CHINH XAC bang nay (§27). Khong dung o "*": mot regression
+// danh roi map deny se qua duoc phep kiem, va `docker compose down derper` tut
+// tu "deny" xuong lenh chay thang. "*" = allow tu 2026-09-11 theo yeu cau nguoi
+// dung (khong hoi quyen) — nen ban do deny cang phai du.
 const BASH_REQUIRED = {
-  '*': 'ask',
+  '*': 'allow',
   'git status': 'allow',
   'git diff*': 'allow',
   'git log*': 'allow',
