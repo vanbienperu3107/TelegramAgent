@@ -81,18 +81,17 @@ def test_duong_ra_internet_la_quyet_dinh_TUONG_MINH(template):
 
     Phep kiem nay khong con khang dinh "phai hoi" — no khang dinh gia tri la MOT
     TRONG CAC GIA TRI DA CAN NHAC, de mot lan sua tay vo tinh khong am tham noi
-    rong them. `external_directory` van phai hoi: no la duong ra khoi workspace,
-    khac han duong ra Internet.
+    rong them. `external_directory` = allow tu 2026-09-11 theo yeu cau nguoi dung
+    (lam viec o /workspace/<project> ngoai working_dir, khong hoi quyen).
     """
-    for key in ("webfetch", "websearch"):
+    for key in ("webfetch", "websearch", "external_directory"):
         assert template["permission"][key] in ("ask", "allow")
-    assert template["permission"]["external_directory"] == "ask"
 
 
 def test_bash_map_co_du_mau_deny(template):
     """`docker *: deny` la co y — may nay chay DERP relay cua ca fleet."""
     bash = template["permission"]["bash"]
-    assert bash["*"] == "ask"
+    assert bash["*"] == "allow"
     for pattern in ("rm *", "sudo *", "systemctl *", "docker *", "kubectl *",
                     "git push*", "git reset --hard*"):
         assert bash[pattern] == "deny", "%s phai la deny" % pattern

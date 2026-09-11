@@ -57,7 +57,7 @@
       "/opt/skills"
     ]
   },
-  "//permission": "webfetch/websearch la \"allow\" theo yeu cau cua nguoi dung (2026-08-18) de cac MCP tim kiem chay tron. Danh doi da biet: agent goi duoc URL tuy y ma khong hoi, tuc no co the mang noi dung workspace ra ngoai. `bash` van \"ask\" va ban do cam van nguyen.",
+  "//permission": "webfetch/websearch la \"allow\" theo yeu cau cua nguoi dung (2026-08-18) de cac MCP tim kiem chay tron. Danh doi da biet: agent goi duoc URL tuy y ma khong hoi, tuc no co the mang noi dung workspace ra ngoai. 2026-09-11 nguoi dung yeu cau agent doc/ghi/thuc thi day du KHONG hoi: bash[\"*\"], task, skill, external_directory chuyen sang \"allow\" (de lam viec o /workspace/<project> ngoai working_dir). Ban do deny van nguyen — deny khong hoi, chi chan.",
   "permission": {
     "read": "allow",
     "grep": "allow",
@@ -65,18 +65,18 @@
     "lsp": "deny",
     "edit": "allow",
     "question": "allow",
-    "task": "ask",
-    "skill": "ask",
+    "task": "allow",
+    "skill": "allow",
     "webfetch": "allow",
     "websearch": "allow",
     "context7_*": "allow",
     "exa_*": "allow",
     "brave_*": "allow",
     "tavily_*": "allow",
-    "external_directory": "ask",
+    "external_directory": "allow",
     "doom_loop": "deny",
     "bash": {
-      "*": "ask",
+      "*": "allow",
       "git status": "allow",
       "git diff*": "allow",
       "git log*": "allow",
