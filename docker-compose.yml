@@ -130,7 +130,7 @@ services:
       -o HostKeyAlias=45.119.87.220
       -i /keys/pg_tunnel_key
       -L 0.0.0.0:5433:${PG_REMOTE_HOST:?can dat PG_REMOTE_HOST}:5432
-      pgtunnel@${PG_TUNNEL_HOST:-100.64.0.7}
+      pgtunnel@100.64.0.7
     volumes:
       - ./keys:/keys:ro
     networks: [db_net]
