@@ -2,6 +2,8 @@
   "$schema": "https://opencode.ai/config.json",
   "//": "Khuon. `models` de RONG co y — scripts/sync-models.cjs tham do CLIProxy luc deploy va dien vao opencode.json that. Danh sach viet tay se lech dan khoi thu CLIProxy phuc vu.",
   "theme": "tokyonight",
+  "//model": "Model MAC DINH cua server. Thieu khoa nay thi app desktop 1.18.30 giao dien v2 (Mac) khong chon duoc model: no hoi server model mac dinh (/api/model/default khong ton tai tren server 1.18.30, tra HTML), khong co thi tai lai vo han (do 2026-09-12). Phai la mot model co trong provider.cliproxy.models sau sync — verify-opencode-config.cjs kiem.",
+  "model": "cliproxy/claude-opus-5",
   "instructions": [
     "AGENTS.md"
   ],

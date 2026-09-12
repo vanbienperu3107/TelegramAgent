@@ -186,6 +186,33 @@ def test_verify_bat_mau_bash_la(tmp_path):
     assert "curl *" in proc.stderr
 
 
+def test_khuon_khai_model_mac_dinh_cua_cliproxy(template):
+    """Thieu model mac dinh thi app desktop giao dien v2 (Mac, 1.18.30) khong chon
+    duoc model: no hoi server model mac dinh, /api/model/default khong ton tai tren
+    server 1.18.30 (tra HTML) va app tai lai vo han. Do that 2026-09-12."""
+    assert re.fullmatch(r"cliproxy/[A-Za-z0-9._-]+", template.get("model") or ""), template.get("model")
+
+
+@node
+def test_verify_bat_thieu_model_mac_dinh(tmp_path):
+    cfg = _cfg_hop_le()
+    del cfg["model"]
+    proc = _run_verify(tmp_path, cfg)
+    assert proc.returncode != 0
+    assert "2b." in proc.stderr
+
+
+@node
+def test_verify_bat_model_mac_dinh_khong_co_trong_danh_sach(tmp_path):
+    """CLIProxy bo mot model thi sync-models xoa no khoi danh sach — model mac
+    dinh tro vao khoang trong phai lam deploy do, khong duoc im lang."""
+    cfg = _cfg_hop_le()
+    cfg["model"] = "cliproxy/model-khong-ton-tai"
+    proc = _run_verify(tmp_path, cfg)
+    assert proc.returncode != 0
+    assert "model-khong-ton-tai" in proc.stderr
+
+
 @node
 def test_verify_bat_json_hong(tmp_path):
     target = tmp_path / "opencode.json"

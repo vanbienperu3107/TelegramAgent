@@ -72,6 +72,16 @@ function check(path) {
     problems.push('2. provider.cliproxy.models rong — sync-models.js khong ghi duoc model nao');
   }
 
+  // 2b. Model mac dinh phai tro toi mot model cliproxy CO THAT sau sync. Thieu
+  // hoac sai thi app desktop giao dien v2 khong chon duoc model (do 2026-09-12).
+  const macDinh = cfg.model;
+  const idMacDinh = typeof macDinh === 'string' && macDinh.startsWith('cliproxy/') ? macDinh.slice(9) : null;
+  if (!idMacDinh) {
+    problems.push(`2b. model mac dinh phai dang "cliproxy/<id>", dang la: ${JSON.stringify(macDinh)}`);
+  } else if (models && typeof models === 'object' && !(idMacDinh in models)) {
+    problems.push(`2b. model mac dinh "${macDinh}" khong co trong provider.cliproxy.models`);
+  }
+
   const perm = cfg.permission;
   if (!perm || typeof perm !== 'object') {
     problems.push('3. thieu han khoi permission — agent se chay theo mac dinh cua OpenCode');
