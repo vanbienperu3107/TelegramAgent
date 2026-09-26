@@ -99,10 +99,58 @@ def test_bash_map_co_du_mau_deny(template):
     assert bash["git push*"] == "allow"
 
 
-def test_provider_dung_bien_moi_truong_khong_hardcode_key(template):
+KHOA_FILE = "{file:/run/secrets/cliproxy-key}"
+
+
+def test_provider_dung_giu_cho_khong_hardcode_key(template):
+    """apiKey phai doc tu FILE, khong tu bien moi truong.
+
+    Bien moi truong chi duoc doc luc TAO container: doi khoa trong .env.opencode
+    roi `docker restart` thi tien trinh van mang khoa cu va CLIProxy tra 401
+    "Invalid API key" — trieu chung trong nhu thao tac doi khoa vua roi la sai,
+    trong khi that ra no dung. Su co 2026-09-26, mat mot vong go roi. Voi
+    {file:...} thi OpenCode doc lai file moi lan khoi dong.
+    """
     opts = template["provider"]["cliproxy"]["options"]
-    assert opts["apiKey"] == "{env:CLIPROXY_API_KEY}"
+    assert opts["apiKey"] == KHOA_FILE
     assert opts["baseURL"] == "{env:CLIPROXY_BASE_URL}"
+
+
+def test_khoa_cliproxy_duoc_mount_dung_cho_va_chi_doc():
+    """Duong dan trong {file:...} phai khop mount trong compose.
+
+    Lech nhau thi OpenCode giai gia tri thanh CHUOI RONG — khong loi, khong canh
+    bao — va moi loi goi model tra 401. Dung lop loi im lang ma cac phep kiem
+    quanh day sinh ra de chan.
+    """
+    import yaml
+
+    cfg = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    duong_dan = cfg["provider"]["cliproxy"]["options"]["apiKey"]
+    assert duong_dan.startswith("{file:") and duong_dan.endswith("}")
+    trong_container = duong_dan[len("{file:"):-1]
+
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    mounts = compose["services"]["opencode-server"].get("volumes", [])
+    khop = [m for m in mounts if m.split(":")[1:2] == [trong_container]]
+    assert khop, "compose khong mount gi vao %s" % trong_container
+    for m in khop:
+        assert m.endswith(":ro"), "khoa phai mount chi doc: %s" % m
+
+
+def test_khoa_khong_con_di_qua_bien_moi_truong():
+    """.env.opencode khong duoc mang CLIPROXY_API_KEY nua.
+
+    Hai nguon cho cung mot khoa thi se co luc lech nhau, va luc do khong co dau
+    hieu nao chi ra cai nao dang duoc dung.
+    """
+    tho = (ROOT / ".env.opencode.example").read_text(encoding="utf-8")
+    dong_bien = [
+        d.split("=", 1)[0].strip()
+        for d in tho.splitlines()
+        if d.strip() and not d.strip().startswith("#") and "=" in d
+    ]
+    assert "CLIPROXY_API_KEY" not in dong_bien
 
 
 def test_models_de_rong_cho_sync_models_dien(template):
@@ -227,6 +275,67 @@ def test_verify_bat_file_rong(tmp_path):
     assert _run_verify(tmp_path, {}).returncode != 0
 
 
+def _migrate(tmp_path, cfg):
+    """Chay scripts/vpn4/migrate-apikey.py tren mot opencode.json tam."""
+    target = tmp_path / "opencode.json"
+    target.write_text(json.dumps(cfg), encoding="utf-8")
+    proc = subprocess.run(
+        ["python3" if shutil.which("python3") else "python",
+         str(ROOT / "scripts" / "vpn4" / "migrate-apikey.py"), str(target)],
+        capture_output=True, text=True,
+    )
+    return proc, target
+
+
+def test_migrate_doi_file_dang_chay_sang_dang_file(tmp_path):
+    """File DANG CHAY tren vpn4 moi la khuon that khi no co khoi `permission`.
+
+    Doi khuon trong repo ma khong vietlai file do thi thay doi khong bao gio toi
+    server — chinh xac cai bay da dinh 2026-09-12 voi khoa `model`.
+    """
+    cfg = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    cfg["provider"]["cliproxy"]["options"]["apiKey"] = "{env:CLIPROXY_API_KEY}"
+    cfg["permission"]["read"] = "allow"  # dau vet agent da sua — phai duoc giu
+    proc, target = _migrate(tmp_path, cfg)
+    assert proc.returncode == 0, proc.stderr
+    ra = json.loads(target.read_text(encoding="utf-8"))
+    assert ra["provider"]["cliproxy"]["options"]["apiKey"] == KHOA_FILE
+    assert ra["permission"]["read"] == "allow"
+    assert ra["model"] == cfg["model"]
+
+
+def test_migrate_chay_lai_khong_doi_gi(tmp_path):
+    cfg = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    proc, target = _migrate(tmp_path, cfg)
+    assert proc.returncode == 0, proc.stderr
+    lan1 = target.read_text(encoding="utf-8")
+    proc2, _ = _migrate(tmp_path, json.loads(lan1))
+    assert proc2.returncode == 0, proc2.stderr
+    assert json.loads(target.read_text(encoding="utf-8")) == json.loads(lan1)
+
+
+def test_migrate_khong_lam_do_deploy_khi_file_hong(tmp_path):
+    """Buoc 4 cua deploy co `printf '{}' > opencode.json` cho truong hop file
+    hong; migrate chay TRUOC sync-models nen no khong duoc tu lam do deploy."""
+    target = tmp_path / "opencode.json"
+    target.write_text("{ khong phai json", encoding="utf-8")
+    proc = subprocess.run(
+        ["python3" if shutil.which("python3") else "python",
+         str(ROOT / "scripts" / "vpn4" / "migrate-apikey.py"), str(target)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_migrate_khong_in_khoa_ra_log(tmp_path):
+    """Log cua GitHub Actions khong xoa duoc — khoa cu khong duoc phep ra do."""
+    cfg = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    cfg["provider"]["cliproxy"]["options"]["apiKey"] = "sk-khoa-that-khong-duoc-in"
+    proc, _ = _migrate(tmp_path, cfg)
+    assert proc.returncode == 0, proc.stderr
+    assert "sk-khoa-that-khong-duoc-in" not in (proc.stdout + proc.stderr)
+
+
 def test_khong_co_bi_mat_viet_thang_trong_khuon():
     """Repo nay PUBLIC. Mot khoa viet thang vao khuon la mot khoa da lo.
 
@@ -248,7 +357,9 @@ def test_khong_co_bi_mat_viet_thang_trong_khuon():
             # Moi gia tri cua truong ten *_KEY / apiKey phai la giu cho, khong
             # duoc la gia tri that.
             if duong.lower().endswith(("api_key", "apikey")):
-                assert nut.startswith("{env:"), "%s khong phai giu cho: %s" % (duong, nut[:12])
+                assert nut.startswith(("{env:", "{file:")), (
+                    "%s khong phai giu cho: %s" % (duong, nut[:12])
+                )
 
     di(d)
 
