@@ -68,8 +68,9 @@ def test_gia_tri_di_qua_vong_tron_nguyen_ven(tmp_path, value):
     env["CLIPROXY_API_KEY"] = value
     proc = _gen(tmp_path, env)
     assert proc.returncode == 0, proc.stderr
+    # Chi con .env (gateway) mang khoa nay. opencode-server doc khoa tu FILE
+    # mount vao (secrets/cliproxy.key) tu 2026-09-26 — xem tests/test_opencode_config.py.
     assert readenv.parse(tmp_path / ".env")["CLIPROXY_API_KEY"] == value
-    assert readenv.parse(tmp_path / ".env.opencode")["CLIPROXY_API_KEY"] == value
 
 
 def test_cho_giu_cho_trong_gia_tri_duoc_thay(tmp_path):
@@ -118,7 +119,9 @@ def test_env_opencode_chi_co_bien_trong_danh_sach_dong(tmp_path):
     proc = _gen(tmp_path, _base_env())
     assert proc.returncode == 0, proc.stderr
     assert set(readenv.parse(tmp_path / ".env.opencode")) == {
-        "CLIPROXY_API_KEY",
+        # CLIPROXY_API_KEY da roi khoi danh sach nay tu 2026-09-26: khoa di bang
+        # file mount (secrets/cliproxy.key), vi bien moi truong chi duoc doc luc
+        # TAO container nen doi khoa + restart khong an.
         "OPENCODE_SERVER_PASSWORD",
         "CLIPROXY_BASE_URL",
         # Khoa cua cac MCP server. Phai o day chu khong o `.env`: {env:...} trong

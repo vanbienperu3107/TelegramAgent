@@ -70,6 +70,12 @@ services:
       # global. sync-models/deploy lay chinh file nay lam khuon khi no da co
       # khoi permission, nen chi lam moi models, giu nguyen phan agent sua.
       - ./opencode.json:/home/node/.config/opencode/opencode.json
+      # Khoa CLIProxy duoi dang FILE, chi doc. opencode.json tro toi day bang
+      # "{file:/run/secrets/cliproxy-key}". Doi khoa = sua file nay + `docker
+      # restart opencode-server`, KHONG can `--force-recreate`: bien moi truong
+      # chi duoc doc luc tao container, nen truoc day doi khoa xong restart van
+      # con 401 (su co 2026-09-26).
+      - ./secrets/cliproxy.key:/run/secrets/cliproxy-key:ro
       - ./workspace:/workspace
       # DU LIEU CUA OPENCODE — phien, lich su message, quyen da duyet 'always'.
       #

@@ -103,7 +103,8 @@
       "name": "CLIProxy (vpn4)",
       "options": {
         "baseURL": "{env:CLIPROXY_BASE_URL}",
-        "apiKey": "{env:CLIPROXY_API_KEY}"
+        "//khoa-cliproxy": "Ten khoa chu thich KHONG duoc ket thuc bang apiKey/api_key: phep kiem chong-hardcode doi moi truong ten nhu vay phai la giu cho, va chinh chu thich nay tung lam CI do. Khoa doc tu FILE mount vao, KHONG tu bien moi truong. Bien moi truong chi doc luc TAO container: doi khoa roi `docker restart` thi tien trinh van mang khoa cu, va trieu chung la 401 'Invalid API key' dung sau khi vua doi khoa xong (su co 2026-09-26). Voi {file:...} thi OpenCode doc lai file moi lan khoi dong, nen doi khoa = sua file + restart. Duong dan phai khop mount trong docker-compose.yml (tests/test_opencode_config.py kiem).",
+        "apiKey": "{file:/run/secrets/cliproxy-key}"
       },
       "models": {}
     }
